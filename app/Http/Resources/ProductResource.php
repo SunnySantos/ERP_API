@@ -36,9 +36,8 @@ class ProductResource extends JsonResource
             'description' => $this->description,
             'price' => $this->price,
             'price_formatted' => '₱' . number_format($this->price, 2),
-            'cost' => $this->cost,
-            'cost_formatted' => '₱' . number_format($this->cost, 2),
-            'category' => CategoryResource::make($this->category)
+            'category' => CategoryResource::make($this->category),
+            'cake_project' => CakeProjectResource::make($this->cakeProject)
         ];
     }
 }

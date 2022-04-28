@@ -2,43 +2,30 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Http\Requests\GetWholeYearRevenueRequest;
+use App\Models\Order;
 use Illuminate\Support\Facades\DB;
 
 class RevenueController extends Controller
 {
-    public function getRevenueByMonth(Request $request)
+    public function getRevenueByMonth()
     {
-        $request->validate([
-            'branch_id' => 'required|numeric|exists:branches,id',
-            'month' => 'required|numeric|min:1|max:12'
-        ]);
-
-
-        $revenue = DB::table('orders as o')
-            ->join('carts as c', 'c.order_id', '=', 'o.id')
-            ->select(
-                DB::raw('SUM(c.total_price) as total')
-            )
-            ->where('branch_id', $request->branch_id)
-            ->whereMonth('o.created_at', $request->month)
-            ->whereNull('o.deleted_at')
-            ->whereNull('c.deleted_at')
+        $orders = Order::withSum('carts', 'total_price')
+            ->where('branch_id', auth()->user()->employee->branch_id)
+            ->whereMonth('created_at', date('m'))
             ->get()
-            ->first();
+            ->toArray();
 
-        if ($revenue) {
-            return response($revenue->total, 200);
-        }
-        return response(0, 200);
+        $revenue = array_reduce($orders, function ($carry, $item) {
+            return $carry += $item['carts_sum_total_price'];
+        }, 0);
+
+        return '₱' . number_format($revenue, 2);
     }
 
-    public function getWholeYearRevenue(Request $request)
+    public function getWholeYearRevenue(GetWholeYearRevenueRequest $request)
     {
-        $request->validate([
-            'branch_id' => 'required|numeric|exists:branches,id',
-            'year' => 'required|digits:4|integer|min:1900|max:' . (date('Y') + 1)
-        ]);
+        $branch_id = is_null($request->input('branch_id')) ? auth()->user()->employee->branch_id : $request->input('branch_id');
 
         $revenue = DB::table('orders as o')
             ->join('carts as c', 'c.order_id', '=', 'o.id')
@@ -47,7 +34,7 @@ class RevenueController extends Controller
                 DB::raw("YEAR(o.created_at) as year"),
                 DB::raw("MONTH(o.created_at) as month")
             )
-            ->where('o.branch_id', $request->branch_id)
+            ->where('o.branch_id', $branch_id)
             ->whereYear('o.created_at', $request->year)
             ->whereNull('o.deleted_at')
             ->whereNull('c.deleted_at')

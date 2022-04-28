@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreCareerRequest;
+use App\Http\Requests\UpdateCareerRequest;
+use App\Http\Resources\CareerResource;
 use App\Models\Career;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,28 +16,41 @@ class CareerController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        return Career::where('deleted_at', null)->paginate(10);
+        $search = $request->input('search');
+
+        $careers = Career::whereNull('deleted_at');
+
+        if (!empty($search)) {
+            $careers->where('title', 'like', "%$search%")
+                ->orWhere('location', 'like', "%$search%");
+        }
+
+        return CareerResource::collection(
+            $careers->orderBy('id', 'DESC')
+                ->paginate(10)
+        );
     }
 
     public function list($count)
     {
-        $careers = Career::where('deleted_at', null)->get()->chunk($count, function ($career) {
-            foreach ($career as $value) {
-                return $value;
-            }
-        });
+        $careers = Career::whereNull('deleted_at')
+            ->get()
+            ->chunk($count, function ($career) {
+                foreach ($career as $value) {
+                    return $value;
+                }
+            });
 
         return sizeof($careers) > 0 ? $careers[0] : [];
     }
 
     public function count()
     {
-        $count = Career::select('id')
-            ->where('deleted_at', null)
+        return Career::select('id')
+            ->whereNull('deleted_at')
             ->count();
-        return $count;
     }
 
     /**
@@ -43,20 +59,12 @@ class CareerController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreCareerRequest $request)
     {
-        $request->validate([
-            'title' => 'required|min:2|string',
-            'location' => 'required|min:2|string',
-            'description' => 'required|min:2|string',
-            'posted' => 'required|date'
-        ]);
-
         $career = Career::create($request->all());
-        if ($career !== null) {
-            return response("Successfully created!", 201);
-        }
-        return response("Invalid data!", 400);
+
+        return $career ? response("Successfully created.", 201)
+            : response("Failed.", 400);
     }
 
     /**
@@ -67,15 +75,11 @@ class CareerController extends Controller
      */
     public function show($id)
     {
-        $career = Career::where('id', $id)
-            ->where('deleted_at', null)
-            ->get()
-            ->first();
-
-        if ($career === null) {
-            return response("Not Exist", 400);
-        }
-        return response($career, 200);
+        return CareerResource::make(
+            Career::where('id', $id)
+                ->whereNull('deleted_at')
+                ->first()
+        );
     }
 
     /**
@@ -103,21 +107,15 @@ class CareerController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateCareerRequest $request, $id)
     {
-        $request->validate([
-            'title' => 'required|min:2|string',
-            'location' => 'required|min:2|string',
-            'description' => 'required|min:2|string'
-        ]);
+        $career = Career::where('id', $id)
+            ->update($request->only([
+                'title', 'location', 'description'
+            ]));
 
-        $career = Career::find($id);
-        if ($career !== null) {
-            if ($career->update($request->all())) {
-                return response("Successfully updated!", 200);
-            }
-        }
-        return response("Career does not exist!", 400);
+        return $career ? response("Successfully updated.")
+            : response("Failed.", 400);
     }
 
     /**
@@ -128,11 +126,8 @@ class CareerController extends Controller
      */
     public function destroy($id)
     {
-        $career = Career::find($id);
-        if ($career !== null && $career->deleted_at === null) {
-            $career->delete();
-            return response("Successfully deleted!", 200);
-        }
-        return response("Invalid", 400);
+        Career::find($id)->delete();
+
+        return response("Successfully deleted.");
     }
 }

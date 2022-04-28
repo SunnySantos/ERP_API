@@ -20,14 +20,14 @@ class ProductImport implements ToModel, WithHeadingRow, WithBatchInserts, WithCh
 
     public function model(array $row)
     {
-        $category = Category::find($row['category_id']);
-        if ($category) {
+        $category = Category::where('name', $row['category'])->whereNull('deleted_at')->first();
+        $product = Product::where('name', $row['name'])->first();
+        if ($category && is_null($product)) {
             Product::create([
                 'name' => $row['name'],
                 'description' => $row['description'],
-                'category_id' => $row['category_id'],
-                'price' => $row['price'],
-                'cost' => $row['cost']
+                'category_id' => $category->id,
+                'price' => $row['price']
             ]);
         }
     }

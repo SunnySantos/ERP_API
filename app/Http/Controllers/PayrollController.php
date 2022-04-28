@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\CountPayrollRequest;
+use App\Http\Requests\IndexPayrollRequest;
+use App\Http\Requests\StorePayrollRequest;
+use App\Http\Requests\UpdatePayrollRequest;
 use App\Models\Attendance;
 use App\Models\Deduction;
-use App\Models\Employee;
 use App\Models\Overtime;
 use App\Models\Payroll;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class PayrollController extends Controller
@@ -17,13 +19,8 @@ class PayrollController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index(Request $request)
+    public function index(IndexPayrollRequest $request)
     {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
-        ]);
-
         $start = $request->input('from');
         $end = $request->input('to');
         $branch_id = auth()->user()->employee->branch_id;
@@ -52,13 +49,8 @@ class PayrollController extends Controller
             ->paginate(10);
     }
 
-    public function count(Request $request)
+    public function count(CountPayrollRequest $request)
     {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
-        ]);
-
         $start = $request->input('from');
         $end = $request->input('to');
         $branch_id = auth()->user()->employee->branch_id;
@@ -78,26 +70,22 @@ class PayrollController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StorePayrollRequest $request)
     {
-        $request->validate([
-            'employee_id' => 'required|numeric|exists:employees,id',
-            'from' => 'required|date',
-            'to' => 'required|date',
-        ]);
-
         $employee_id = $request->input('employee_id');
         $start = $request->input('from');
         $end = $request->input('to');
 
-        $overtime = Overtime::select(
-            DB::raw('sum(rate) as rate'),
-            DB::raw('sum(hours) as hours'),
-        )
+        $overtime = Overtime::with('attendance')
+            ->select(
+                DB::raw('sum(rate) as rate'),
+                DB::raw('sum(hours) as hours'),
+            )
+            ->whereHas('attendance', function ($query) use ($start, $end) {
+                $query->whereDate('attend_date', '>=', $start)
+                    ->whereDate('attend_date', '<=', $end);
+            })
             ->where('employee_id', $employee_id)
-            ->whereDate('overtime_date', '>=', $start)
-            ->whereDate('overtime_date', '<=', $end)
-            // ->whereBetween('overtime_date', [$request->from, $request->to])
             ->whereNull('deleted_at')
             ->first();
 
@@ -105,7 +93,6 @@ class PayrollController extends Controller
             $attendance = Attendance::select(DB::raw('sum(abs(subtime(time_in,time_out))) as hours'))
                 ->whereDate('attend_date', '>=', $start)
                 ->whereDate('attend_date', '<=', $end)
-                // ->whereBetween('attend_date', [$request->from, $request->to])
                 ->where('employee_id', $employee_id)
                 ->whereNull('deleted_at')
                 ->first();
@@ -140,7 +127,7 @@ class PayrollController extends Controller
             }
         }
 
-        return response('Record not saved.', 400);
+        return response('Failed.', 400);
     }
 
     /**
@@ -154,17 +141,6 @@ class PayrollController extends Controller
         //
     }
 
-    public function showByBranchId(Request $request)
-    {
-        $request->validate([
-            'branch_id' => 'required|numeric|exitst:branches,id',
-            'start' => 'required|date',
-            'end' => 'required|date'
-        ]);
-
-        return $request->all();
-    }
-
     /**
      * Update the specified resource in storage.
      *
@@ -172,14 +148,8 @@ class PayrollController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdatePayrollRequest $request, $id)
     {
-        $request->validate([
-            'hour_rate' => 'required|between:0,99.99|min:0',
-            'overtime_rate' => 'required|between:0,99.99|min:0',
-            'deduction' => 'required|between:0,99.99|min:0',
-        ]);
-
         $hour_rate = $request->input('hour_rate');
         $overtime_rate = $request->input('overtime_rate');
         $deduction = $request->input('deduction');
@@ -192,10 +162,8 @@ class PayrollController extends Controller
                 'deduction' => $deduction
             ]);
 
-        if ($payroll) {
-            return response("Successfully updated.", 200);
-        }
-        return response('Failed to update.', 400);
+        return $payroll ? response("Successfully updated.")
+            : response('Failed.', 400);
     }
 
     /**
@@ -206,12 +174,8 @@ class PayrollController extends Controller
      */
     public function destroy($id)
     {
-        $payroll = Payroll::find($id);
+        Payroll::find($id)->delete();
 
-        if ($payroll) {
-            $payroll->delete();
-            return response('Successfully deleted.', 200);
-        }
-        return response('Record not found.', 400);
+        return response('Successfully deleted.');
     }
 }

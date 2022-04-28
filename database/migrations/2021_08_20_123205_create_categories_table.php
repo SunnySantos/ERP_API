@@ -24,9 +24,6 @@ class CreateCategoriesTable extends Migration
         DB::table('categories')->insert(
             [
                 [
-                    'name' => 'Custom'
-                ],
-                [
                     'name' => 'Birthday'
                 ],
                 [

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Events\NewMessage;
+use App\Http\Requests\GetChatMessageRequest;
+use App\Http\Requests\NewChannelMessageRequest;
 use App\Models\Channel;
 use App\Models\Customer;
 use App\Models\Employee;
@@ -14,25 +16,13 @@ use Illuminate\Support\Facades\DB;
 class ChatController extends Controller
 {
 
-    public function getMessages(Request $request)
+    public function getMessages(GetChatMessageRequest $request)
     {
-        $request->validate([
-            'channel_name' => 'required|string|exists:channels,name',
-        ]);
-
-        $channel_name = $request->input('channel_name');
-        event(new NewMessage('', $channel_name));
+        event(new NewMessage('', $request->input('channel_name')));
     }
 
-    public function newChannelMessage(Request $request)
+    public function newChannelMessage(NewChannelMessageRequest $request)
     {
-        $request->validate([
-            'channel_name' => 'nullable|string',
-            'message' => 'nullable|string',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
-        ]);
-
-        $user_id = auth()->user()->id;
         $channel_name = $request->input('channel_name');
         $image = $request->file('image');
         $message = $request->input('message');
@@ -45,11 +35,11 @@ class ChatController extends Controller
                     ->where('department_id', 2)
                     ->first();
                 $this->storeSubscriber($employeeCRM->user_id, $channel);
-                $this->storeSubscriber($user_id, $channel);
+                $this->storeSubscriber(auth()->id(), $channel);
 
                 Message::create([
                     'channel_id' => $channel->id,
-                    'user_id' => $user_id,
+                    'user_id' => auth()->id(),
                     'message' => $message,
                     'image' => $this->storeImage($image)
                 ]);
@@ -61,14 +51,13 @@ class ChatController extends Controller
 
     public function userChannels()
     {
-        $user_id = auth()->user()->id;
         $channels = Channel::join('subscribers', 'channels.id', '=', 'subscribers.channel_id')
             ->join('messages', 'channels.id', '=', 'messages.channel_id')
             ->select(
                 'channels.id',
                 'channels.name',
             )
-            ->where('subscribers.user_id', $user_id)
+            ->where('subscribers.user_id', auth()->id())
             ->distinct()
             ->orderBy('messages.created_at', 'DESC')
             ->get();
@@ -154,14 +143,6 @@ class ChatController extends Controller
 
     private function getRecentMessage($channel_id)
     {
-        // $message = Message::where('channel_id', $channel->id)
-        //     ->select(
-        //         'message',
-        //         'created_at'
-        //     )
-        //     ->orderBy('created_at', 'DESC')
-        //     ->first();
-
         return Channel::find($channel_id)
             ->messages()
             ->select(

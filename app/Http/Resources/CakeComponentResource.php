@@ -14,6 +14,7 @@ class CakeComponentResource extends JsonResource
      */
     public function toArray($request)
     {
+        
         return [
             'id' => $this->id,
             'cake_model_id' => $this->cake_model_id,

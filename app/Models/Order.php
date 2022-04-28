@@ -25,6 +25,11 @@ class Order extends Model
         return $this->hasMany(Cart::class);
     }
 
+    public function product()
+    {
+        return $this->carts()->belongTo(Product::class);
+    }
+
     public function customer()
     {
         return $this->belongsTo(Customer::class);

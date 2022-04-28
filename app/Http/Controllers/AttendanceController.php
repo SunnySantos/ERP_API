@@ -2,13 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\AveHoursRequest;
+use App\Http\Requests\IndexAttendanceRequest;
+use App\Http\Requests\MaxHoursRequest;
+use App\Http\Requests\MinHoursRequest;
+use App\Http\Requests\StoreAttendanceRequest;
+use App\Http\Requests\TotalHoursRequest;
+use App\Http\Requests\UpdateAttendanceRequest;
+use App\Http\Resources\AttendanceResource;
 use App\Import\AttendanceImport;
 use App\Models\Attendance;
-use App\Models\Employee;
+use App\Models\EmployeeSchedule;
 use App\Models\Overtime;
 use DateTime;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use PDOException;
 
 class AttendanceController extends Controller
 {
@@ -18,10 +28,19 @@ class AttendanceController extends Controller
         return response('Successfully imported.', 201);
     }
 
-    public function exportCSV()
+    public function exportCSV(IndexAttendanceRequest $request)
     {
+        $branch_id = auth()->user()->employee->branch_id;
         $filename = 'attendances.csv';
-        $attendances = Attendance::all();
+        $attendances = Attendance::with('employee')
+            ->whereHas('employee', function ($query) use ($branch_id) {
+                $query->where('branch_id', $branch_id);
+            })
+            ->whereDate('attend_date', '>=', $request->input("from"))
+            ->whereDate('attend_date', '<=', $request->input("to"))
+            ->whereNull('deleted_at')
+            ->orderBy('attend_date', 'ASC')
+            ->get();
 
         $columns = [
             'employee_id',
@@ -66,110 +85,161 @@ class AttendanceController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(IndexAttendanceRequest $request)
     {
+        $branch_id = auth()->user()->employee->branch_id;
+
+        return AttendanceResource::collection(
+            Attendance::with('employee')
+                ->whereHas('employee', function ($query) use ($branch_id) {
+                    $query->where('branch_id', $branch_id);
+                })
+                ->whereDate('attend_date', '>=', $request->input("from"))
+                ->whereDate('attend_date', '<=', $request->input("to"))
+                ->whereNull('deleted_at')
+                ->paginate(10)
+        );
     }
 
-    public function maxHours(Request $request)
+    public function maxHours(MaxHoursRequest $request)
     {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
-        ]);
-
         $branch_id = auth()->user()->employee->branch_id;
-        $from = $request->from;
-        $to = $request->to;
 
-        $max = DB::table('attendances as a')
-            ->join('employees as e', 'a.employee_id', '=', 'e.id')
-            ->select(DB::raw('max(abs(subtime(a.time_in,a.time_out))) as hours'))
-            ->whereBetween('a.attend_date', [$from, $to])
-            ->where('e.branch_id', $branch_id)
-            ->get()
+        $max = Attendance::with('employee')
+            ->select(DB::raw('max(abs(subtime(time_in,time_out))) as hours'))
+            ->whereHas('employee', function ($query) use ($branch_id) {
+                $query->where('branch_id', $branch_id);
+            })
+            ->whereDate('attend_date', '>=', $request->input("from"))
+            ->whereDate('attend_date', '<=', $request->input("to"))
+            ->whereNull('deleted_at')
             ->first();
+
         $max = $max->hours / 10000;
-        if ($max > 0) {
-            return response($max, 200);
-        }
-        return response(0, 200);
+        return $max > 0 ? response(number_format($max, 2)) : response(0);
     }
 
-    public function minHours(Request $request)
+    public function minHours(MinHoursRequest $request)
     {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
-        ]);
-
         $branch_id = auth()->user()->employee->branch_id;
 
-        $from = $request->from;
-        $to = $request->to;
-
-        $min = DB::table('attendances as a')
-            ->join('employees as e', 'a.employee_id', '=', 'e.id')
-            ->select(DB::raw('min(abs(subtime(a.time_in,a.time_out))) as hours'))
-            ->whereBetween('a.attend_date', [$from, $to])
-            ->where('e.branch_id', $branch_id)
-            ->get()
+        $min = Attendance::with('employee')
+            ->select(DB::raw('min(abs(subtime(time_in,time_out))) as hours'))
+            ->whereHas('employee', function ($query) use ($branch_id) {
+                $query->where('branch_id', $branch_id);
+            })
+            ->whereDate('attend_date', '>=', $request->input("from"))
+            ->whereDate('attend_date', '<=', $request->input("to"))
+            ->whereNull('deleted_at')
             ->first();
+
         $min = $min->hours / 10000;
-        if ($min > 0) {
-            return response($min, 200);
-        }
-        return response(0, 200);
+        return $min > 0 ? response(number_format($min, 2)) : response(0);
     }
 
-    public function aveHours(Request $request)
+    public function aveHours(AveHoursRequest $request)
     {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
-        ]);
-
-        $from = $request->from;
-        $to = $request->to;
         $branch_id = auth()->user()->employee->branch_id;
 
-        $ave = DB::table('attendances as a')
-            ->join('employees as e', 'a.employee_id', '=', 'e.id')
+        $ave = Attendance::with('employee')
             ->select(DB::raw('floor(avg(abs(subtime(time_in,time_out)))) as hours'))
-            ->whereBetween('a.attend_date', [$from, $to])
-            ->where('e.branch_id', $branch_id)
-            ->get()
+            ->whereHas('employee', function ($query) use ($branch_id) {
+                $query->where('branch_id', $branch_id);
+            })
+            ->whereDate('attend_date', '>=', $request->input("from"))
+            ->whereDate('attend_date', '<=', $request->input("to"))
+            ->whereNull('deleted_at')
             ->first();
+
         $ave = $ave->hours / 10000;
-        if ($ave > 0) {
-            return response($ave, 200);
-        }
-        return response(0, 200);
+        return $ave > 0 ? response(number_format($ave, 2)) : response(0);
     }
 
-    public function totalHours(Request $request)
+    public function totalHours(TotalHoursRequest $request)
     {
+        $branch_id = auth()->user()->employee->branch_id;
 
+        $sum =  Attendance::with('employee')
+            ->select(DB::raw('sum(abs(subtime(time_in,time_out))) as hours'))
+            ->whereHas('employee', function ($query) use ($branch_id) {
+                $query->where('branch_id', $branch_id);
+            })
+            ->whereDate('attend_date', '>=', $request->input("from"))
+            ->whereDate('attend_date', '<=', $request->input("to"))
+            ->whereNull('deleted_at')
+            ->first();
+
+        $sum = $sum->hours / 10000;
+        return $sum > 0 ? response(number_format($sum, 2)) : response(0);
+    }
+
+    public function presentToday()
+    {
+        $count = Attendance::whereDate('attend_date', now())
+            ->whereNull('deleted_at')
+            ->count();
+        return number_format($count);
+    }
+
+    public function absentToday()
+    {
+        $employeeScheduleCount = EmployeeSchedule::whereDate('attend_date', now())
+            ->whereNull('deleted_at')
+            ->count();
+
+        $attendanceCount = Attendance::whereDate('attend_date', now())
+            ->whereNull('deleted_at')
+            ->count();
+
+        return number_format($employeeScheduleCount - $attendanceCount);
+    }
+
+    public function chart(Request $request)
+    {
         $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
+            'year' => 'required'
         ]);
 
         $branch_id = auth()->user()->employee->branch_id;
-        $from = $request->from;
-        $to = $request->to;
 
-        $sum = DB::table('attendances as a')
-            ->join('employees as e', 'a.employee_id', '=', 'e.id')
-            ->select(DB::raw('sum(abs(subtime(time_in,time_out))) as hours'))
-            ->whereBetween('a.attend_date', [$from, $to])
-            ->where('e.branch_id', $branch_id)
-            ->get()
-            ->first();
-        $sum = $sum->hours / 10000;
-        if ($sum > 0) {
-            return response($sum, 200);
+        $attendances = Attendance::select(
+            DB::raw("COUNT(id) as present"),
+            DB::raw("YEAR(attend_date) as year"),
+            DB::raw("MONTH(attend_date) as month")
+        )
+            ->whereHas('employee', function ($query) use ($branch_id) {
+                $query->where('branch_id', $branch_id);
+            })
+            ->whereYear('attend_date', $request->input('year'))
+            ->whereNull('deleted_at')
+            ->groupBy("month", "year")
+            ->orderBy("month", "ASC")
+            ->get();
+
+        $employeeSchedules =  EmployeeSchedule::select(
+            DB::raw("COUNT(id) as count"),
+            DB::raw("YEAR(attend_date) as year"),
+            DB::raw("MONTH(attend_date) as month")
+        )
+            ->whereHas('employee', function ($query) use ($branch_id) {
+                $query->where('branch_id', $branch_id);
+            })
+            ->whereIn(DB::raw("YEAR(attend_date)"), $attendances->pluck("year"))
+            ->whereIn(DB::raw("MONTH(attend_date)"), $attendances->pluck("month"))
+            ->whereNull('deleted_at')
+            ->groupBy("month", "year")
+            ->orderBy("month", "ASC")
+            ->get();
+
+        foreach ($attendances as $key => $attendance) {
+            foreach ($employeeSchedules as $key => $employeeSchedule) {
+                if ($attendance->month == $employeeSchedule->month) {
+                    $attendance['absent'] = ($employeeSchedule->count - $attendance->present);
+                }
+            }
         }
-        return response(0, 200);
+
+        return $attendances;
     }
 
     /**
@@ -178,46 +248,47 @@ class AttendanceController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreAttendanceRequest $request)
     {
-        $request->validate([
-            'employee_id' => 'required|numeric|exists:employees,id',
-            'attend_date' => 'required|date',
-            'time_in' => 'required|date_format:H:i',
-            'time_out' => 'required|date_format:H:i'
-        ]);
-
-        $schedule = DB::table('schedules as a')
-            ->join('employees as b', 'a.id', '=', 'b.schedule_id')
-            ->select('a.time_out')
-            ->where('b.id', $request->employee_id)
-            ->whereNull('a.deleted_at')
+        $employeeSchedule = EmployeeSchedule::with('employee')
+            ->select('time_out')
+            ->whereHas('employee', function ($query) use ($request) {
+                $query->where('id', $request->input('employee_id'));
+            })
+            ->where('attend_date', $request->input('attend_date'))
+            ->whereNull('deleted_at')
             ->first();
 
-        if ($schedule) {
-            $overtime = $this->getTimeDiff($request->time_out, $schedule->time_out);
+        if ($employeeSchedule) {
+            try {
+                $result = DB::transaction(function () use ($request, $employeeSchedule) {
+                    $overtime = $this->getTimeDiff($request->time_out, $employeeSchedule->time_out);
+                    $attendance =  Attendance::create($request->all());
+                    if ($overtime > 0) {
+                        Overtime::create([
+                            'employee_id' => $request->input('employee_id'),
+                            'attendance_id' => $attendance->id,
+                            'hours' => $overtime,
+                            'rate' => 0
+                        ]);
+                    }
+                    return "Successfully created.";
+                });
 
-            if ($overtime > 0) {
-                Overtime::create([
-                    'employee_id' => $request->employee_id,
-                    'overtime_date' => $request->attend_date,
-                    'hours' => $overtime,
-                    'rate' => 0
-                ]);
+                return response($result, 201);
+            } catch (Exception $e) {
+                return response("Failed.", 400);
             }
-            $request['overtime'] = $overtime;
-            Attendance::create($request->all());
         }
-
-
-        return response("Successfully added.", 201);
+        return response("No schedule.", 400);
     }
 
-    public function getTimeDiff($in, $out)
+    public function getTimeDiff($out1, $out2)
     {
-        $in = new DateTime($in);
-        $out = new DateTime($out);
-        return $in->diff($out)->format('%h');
+        $out1 = new DateTime($out1);
+        $out2 = new DateTime($out2);
+
+        return $out1 > $out2 ? $out1->diff($out2)->format('%h') : 0;
     }
 
     /**
@@ -228,114 +299,10 @@ class AttendanceController extends Controller
      */
     public function show($id)
     {
-        return Attendance::find($id);
+        return AttendanceResource::make(Attendance::find($id));
     }
 
-    public function search(Request $request)
-    {
-        $request->validate([
-            'employee_id' => 'required|numeric|exists:employees,id',
-            'start' => 'required|date',
-            'end' => 'required|date'
-        ]);
 
-        $branch_id = auth()->user()->employee->branch_id;
-        $start = $request->input('start');
-        $end = $request->input('end');
-
-
-        $data = DB::table('attendances as a')
-            ->join('employees as e', 'a.employee_id', '=', 'e.id')
-            ->join('branches as b', 'e.branch_id', '=', 'b.id')
-            ->select(
-                'a.employee_id',
-                DB::raw('floor(sum(abs(subtime(a.time_in,a.time_out)))/10000) as hours'),
-                DB::raw('sum(a.overtime) as ots')
-            )
-            ->whereBetween('a.attend_date', [$start, $end])
-            ->where('b.id', $branch_id)
-            ->whereNull('a.deleted_at')
-            // ->where('a.employee_id', $request->employee_id)
-            ->groupBy('a.employee_id')
-            ->first();
-
-        if ($data !== null) {
-            $employee = $this->getEmployeeById($data->employee_id);
-            $data->firstname = $employee->firstname;
-            $data->lastname = $employee->lastname;
-            return $data;
-        }
-
-        return response('No record found.', 400);
-    }
-
-    public function getEmployeeById($id)
-    {
-        return Employee::select(
-            'firstname',
-            'lastname'
-        )
-            ->where('id', $id)
-            ->get()
-            ->first();
-    }
-
-    public function showByBranchId(Request $request)
-    {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
-        ]);
-
-        $branch_id = auth()->user()->employee->branch_id;
-        $from = $request->from;
-        $to = $request->to;
-
-        return DB::table('attendances as a')
-            ->join('employees as e', 'a.employee_id', '=', 'e.id')
-            ->select(
-                'a.id',
-                'a.employee_id',
-                'a.attend_date',
-                'a.time_in',
-                'a.time_out',
-                'a.overtime',
-                'e.firstname',
-                'e.lastname'
-            )
-            ->whereBetween('a.attend_date', [$from, $to])
-            // ->where('e.branch_id', $branch_id)
-            ->whereNull('a.deleted_at')
-            ->paginate(10);
-
-        return tap(
-            DB::table('attendances as a')
-                ->join('employees as e', 'a.employee_id', '=', 'e.id')
-                ->select(
-                    'a.id',
-                    'a.employee_id',
-                    'a.attend_date',
-                    'a.time_in',
-                    'a.time_out',
-                    'a.overtime',
-                    'e.firstname',
-                    'e.lastname'
-                )
-                ->whereBetween('a.attend_date', [$from, $to])
-                ->where('e.branch_id', $branch_id)
-                ->whereNull('a.deleted_at')
-                ->paginate(10),
-            function ($paginateInstance) {
-                return $paginateInstance->getCollection()->transform(function ($value) {
-                    $time = explode(':', $value->time_in);
-                    $value->time_in = $time[0] . ':' . $time[1];
-                    $time = explode(':', $value->time_out);
-                    $value->time_out = $time[0] . ':' . $time[1];
-                    return $value;
-                });
-            }
-        );
-    }
 
     /**
      * Update the specified resource in storage.
@@ -344,59 +311,63 @@ class AttendanceController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateAttendanceRequest $request, $id)
     {
-        $request->validate([
-            'employee_id' => 'required|numeric|exists:employees,id',
-            'attend_date' => 'required|date',
-            'time_in' => 'required',
-            'time_out' => 'required'
-        ]);
-
-        $attendance1 = DB::table('schedules as a')
-            ->join('employees as b', 'a.id', '=', 'b.schedule_id')
-            ->select('a.time_out')
-            ->where('b.id', $request->employee_id)
-            ->whereNull('a.deleted_at')
+        $employeeSchedule = EmployeeSchedule::with('employee')
+            ->select('time_out')
+            ->whereHas('employee', function ($query) use ($request) {
+                $query->where('id', $request->input('employee_id'));
+            })
+            ->whereNull('deleted_at')
             ->first();
 
+        if ($employeeSchedule) {
+            try {
+                $result = DB::transaction(function () use ($request, $employeeSchedule, $id) {
+                    $overtime = $this->getTimeDiff($request->time_out, $employeeSchedule->time_out);
+
+                    $attendance = Attendance::where('id', $id)
+                        ->whereNull('deleted_at')
+                        ->update([
+                            'employee_id' => $request->employee_id,
+                            'attend_date' => $request->attend_date,
+                            'time_in' => $request->time_in,
+                            'time_out' => $request->time_out,
+                            'overtime' => $overtime
+                        ]);
+
+                    if (!$attendance) throw new Exception("Failed.");
 
 
-        if ($attendance1) {
-            $ot = $this->getTimeDiff($request->time_out, $attendance1->time_out);
+                    if ($overtime > 0) {
+                        $overtime = Overtime::where('attendance_id', $attendance->id)
+                            ->whereNull('deleted_at')
+                            ->update([
+                                'hours' => $overtime,
+                            ]);
 
-            Attendance::where('id', $id)
-                ->whereNull('deleted_at')
-                ->update([
-                    'employee_id' => $request->employee_id,
-                    'attend_date' => $request->attend_date,
-                    'time_in' => $request->time_in,
-                    'time_out' => $request->time_out,
-                    'overtime' => $ot
-                ]);
+                        if (!$overtime) {
+                            Overtime::create([
+                                'employee_id' => $request->input('employee_id'),
+                                'attendance_id' => $attendance->id,
+                                'hours' => $overtime,
+                                'rate' => 0
+                            ]);
+                        }
+                    }
 
+                    return "Successfully updated.";
+                });
 
-            if ($ot > 0) {
-                $overtime = Overtime::where('overtime_date', $request->attend_date)
-                    ->whereNull('deleted_at')
-                    ->update([
-                        'hours' => $ot,
-                    ]);
-
-                if (!$overtime) {
-                    Overtime::create([
-                        'employee_id' => $request->employee_id,
-                        'overtime_date' => $request->attend_date,
-                        'hours' => $ot,
-                        'rate' => 0
-                    ]);
-                }
+                return response($result);
+            } catch (PDOException $e) {
+                return response("Failed.", 400);
+            } catch (Exception $e) {
+                return response("Failed.", 400);
             }
-
-            return response("Successfully updated.", 200);
         }
 
-        return response("Failed.", 400);
+        return response("No schedule.", 400);
     }
 
     /**
@@ -407,12 +378,98 @@ class AttendanceController extends Controller
      */
     public function destroy($id)
     {
-        $attendance = Attendance::find($id);
-
-        if ($attendance) {
-            $attendance->delete();
-            return response("Successfully deleted.", 200);
-        }
-        return response("Record does not exists.", 400);
+        Attendance::find($id)->forceDelete();
+        return response("Successfully deleted.");
     }
+
+
+    // public function search(SearchAttendanceRequest $request)
+    // {
+    //     $branch_id = auth()->user()->employee->branch_id;
+    //     $start = $request->input('start');
+    //     $end = $request->input('end');
+
+
+    //     $data = DB::table('attendances as a')
+    //         ->join('employees as e', 'a.employee_id', '=', 'e.id')
+    //         ->join('branches as b', 'e.branch_id', '=', 'b.id')
+    //         ->select(
+    //             'a.employee_id',
+    //             DB::raw('floor(sum(abs(subtime(a.time_in,a.time_out)))/10000) as hours'),
+    //             DB::raw('sum(a.overtime) as ots')
+    //         )
+    //         ->whereBetween('a.attend_date', [$start, $end])
+    //         ->where('b.id', $branch_id)
+    //         ->whereNull('a.deleted_at')
+    //         // ->where('a.employee_id', $request->employee_id)
+    //         ->groupBy('a.employee_id')
+    //         ->first();
+
+    //     if ($data !== null) {
+    //         $employee = $this->getEmployeeById($data->employee_id);
+    //         $data->firstname = $employee->firstname;
+    //         $data->lastname = $employee->lastname;
+    //         return $data;
+    //     }
+
+    //     return response('No record found.', 400);
+    // }
+
+
+    // public function showByBranchId(Request $request)
+    // {
+    //     $request->validate([
+    //         'from' => 'required|date',
+    //         'to' => 'required|date'
+    //     ]);
+
+    //     $branch_id = auth()->user()->employee->branch_id;
+    //     $from = $request->from;
+    //     $to = $request->to;
+
+    //     return DB::table('attendances as a')
+    //         ->join('employees as e', 'a.employee_id', '=', 'e.id')
+    //         ->select(
+    //             'a.id',
+    //             'a.employee_id',
+    //             'a.attend_date',
+    //             'a.time_in',
+    //             'a.time_out',
+    //             'a.overtime',
+    //             'e.firstname',
+    //             'e.lastname'
+    //         )
+    //         ->whereBetween('a.attend_date', [$from, $to])
+    //         // ->where('e.branch_id', $branch_id)
+    //         ->whereNull('a.deleted_at')
+    //         ->paginate(10);
+
+    //     return tap(
+    //         DB::table('attendances as a')
+    //             ->join('employees as e', 'a.employee_id', '=', 'e.id')
+    //             ->select(
+    //                 'a.id',
+    //                 'a.employee_id',
+    //                 'a.attend_date',
+    //                 'a.time_in',
+    //                 'a.time_out',
+    //                 'a.overtime',
+    //                 'e.firstname',
+    //                 'e.lastname'
+    //             )
+    //             ->whereBetween('a.attend_date', [$from, $to])
+    //             ->where('e.branch_id', $branch_id)
+    //             ->whereNull('a.deleted_at')
+    //             ->paginate(10),
+    //         function ($paginateInstance) {
+    //             return $paginateInstance->getCollection()->transform(function ($value) {
+    //                 $time = explode(':', $value->time_in);
+    //                 $value->time_in = $time[0] . ':' . $time[1];
+    //                 $time = explode(':', $value->time_out);
+    //                 $value->time_out = $time[0] . ':' . $time[1];
+    //                 return $value;
+    //             });
+    //         }
+    //     );
+    // }
 }

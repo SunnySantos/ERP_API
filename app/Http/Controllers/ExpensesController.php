@@ -2,6 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\CountExpensesRequest;
+use App\Http\Requests\ExpenseReportRequest;
+use App\Http\Requests\GetExpensesByMonthRequest;
+use App\Http\Requests\GetWholeYearExpensesRequest;
+use App\Http\Requests\IndexExpensesRequest;
+use App\Http\Requests\StoreExpensesRequest;
+use App\Http\Requests\UpdateExpenseRequest;
 use App\Http\Resources\ExpenseResource;
 use App\Import\ExpenseImport;
 use App\Models\Employee;
@@ -60,13 +67,8 @@ class ExpensesController extends Controller
         unlink($filename);
     }
 
-    public function index(Request $request)
+    public function index(IndexExpensesRequest $request)
     {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
-        ]);
-
         $branch_id = auth()->user()->employee->branch_id;
         $start = $request->input('from');
         $end = $request->input('to');
@@ -83,39 +85,21 @@ class ExpensesController extends Controller
     public function getExpensesByMonth(Request $request)
     {
         $request->validate([
-            'month' => 'required|numeric|min:1|max:12'
+            'branch_id' => 'nullable|exists:branches,id'
         ]);
 
-        $branch_id = auth()->user()->employee->branch_id;
-        $month = $request->input('month');
+        $branch_id = is_null($request->input('branch_id')) ? auth()->user()->employee->branch_id : $request->input('branch_id');
 
-        if ($branch_id) {
-            $expenses = Expenses::select(
-                DB::raw("CONCAT('₱',FORMAT(AVG(amount), 2)) as ave")
-            )
-                ->where('branch_id', $branch_id)
-                ->whereMonth('created_at', $month)
-                ->whereNull('deleted_at')
-                ->first();
-
-            $ave = $expenses->ave;
-
-            if ($ave) {
-                return response($ave, 200);
-            }
-        }
-
-        return response('₱0', 200);
+        $expenses = Expenses::where('branch_id', $branch_id)
+            ->whereMonth('created_at', $request->input('month'))
+            ->whereNull('deleted_at')
+            ->avg('amount');
+        return '₱' . number_format($expenses, 2);
     }
 
-    public function getWholeYearExpenses(Request $request)
+    public function getWholeYearExpenses(GetWholeYearExpensesRequest $request)
     {
-        $request->validate([
-            'year' => 'required|digits:4|integer|min:1900|max:' . (date('Y') + 1)
-        ]);
-
-        $branch_id = auth()->user()->employee->branch_id;
-        $year = $request->input('year');
+        $branch_id = is_null($request->input('branch_id')) ? auth()->user()->employee->branch_id : $request->input('branch_id');
 
         if ($branch_id) {
             return Expenses::select(
@@ -124,7 +108,7 @@ class ExpensesController extends Controller
                 DB::raw("MONTH(created_at) as month")
             )
                 ->where('branch_id', $branch_id)
-                ->whereYear('created_at', $year)
+                ->whereYear('created_at', $request->input('year'))
                 ->whereNull('deleted_at')
                 ->groupBy('month', 'year')
                 ->orderBy('month', 'ASC')
@@ -134,13 +118,8 @@ class ExpensesController extends Controller
         return response([], 200);
     }
 
-    public function count(Request $request)
+    public function count(CountExpensesRequest $request)
     {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
-        ]);
-
         $branch_id = auth()->user()->employee->branch_id;
         $start = $request->input('from');
         $end = $request->input('to');
@@ -161,13 +140,8 @@ class ExpensesController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreExpensesRequest $request)
     {
-        $request->validate([
-            'name' => 'nullable|string|max:255',
-            'amount' => 'required|numeric|min:0',
-        ]);
-
         $branch_id = auth()->user()->employee->branch_id;
         $name = $request->input('name');
         $amount = $request->input('amount');
@@ -181,15 +155,8 @@ class ExpensesController extends Controller
     }
 
 
-    public function report(Request $request)
+    public function report(ExpenseReportRequest $request)
     {
-        $request->validate([
-            'branch_id' => 'required|numeric|exists:branches,id',
-            'employee_id' => 'required|numeric|exists:employees,id',
-            'start' => 'required|date',
-            'end' => 'required|date'
-        ]);
-
         $employee_id = $request->employee_id;
         $purpose = $request->purpose;
         $branch_id = $request->branch_id;
@@ -268,7 +235,7 @@ class ExpensesController extends Controller
             ->update([
                 'status' => "APPROVED"
             ]);
-        return response('Successfully updated.', 200);
+        return response('Successfully updated.');
     }
 
     /**
@@ -278,27 +245,15 @@ class ExpensesController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateExpenseRequest $request, $id)
     {
-        $request->validate([
-            'branch_id' => 'required|numeric|exists:branches,id',
-            'name' => 'nullable|string|max:255',
-            'amount' => 'required|numeric|min:0'
-        ]);
-
         $expenses = Expenses::where('id', $id)
             ->where('branch_id', $request->branch_id)
             ->whereNull('deleted_at')
-            ->update([
-                'name' => $request->name,
-                'amount' => $request->amount
-            ]);
+            ->update($request->only(['name', 'amount']));
 
-        if ($expenses) {
-            return response('Successfully updated.', 200);
-        }
-
-        return response('Record not found.', 400);
+        return $expenses ? response('Successfully updated.')
+            : response('Record not found.', 400);
     }
 
     /**
@@ -309,13 +264,8 @@ class ExpensesController extends Controller
      */
     public function destroy($id)
     {
-        $expenses = Expenses::find($id);
+        Expenses::find($id)->delete();
 
-        if ($expenses) {
-            $expenses->delete();
-            return response('Successfully deleted.', 200);
-        }
-
-        return response('Record not deleted.', 400);
+        return response('Successfully deleted.');
     }
 }

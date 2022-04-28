@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreParcelRequest;
+use App\Http\Requests\UpdateParcelRequest;
 use App\Http\Resources\ParcelResource;
 use App\Import\ParcelImport;
 use App\Models\Carrier;
-use App\Models\Employee;
 use App\Models\Order;
 use App\Models\Parcel;
 use Illuminate\Http\Request;
@@ -113,14 +114,8 @@ class ParcelController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreParcelRequest $request)
     {
-        $request->validate([
-            'order_id' => 'required|numeric|exists:orders,id',
-            'carrier_id' => 'required|numeric|exists:carriers,id',
-            'status' => 'required|string'
-        ]);
-
         $branch_id = auth()->user()->employee->branch_id;
 
         $order = Order::where('id', $request->input('order_id'))
@@ -155,9 +150,11 @@ class ParcelController extends Controller
      */
     public function show($tracking)
     {
-        return Parcel::where('tracking', $tracking)
-            ->whereNull('deleted_at')
-            ->first();
+        return ParcelResource::make(
+            Parcel::where('tracking', $tracking)
+                ->whereNull('deleted_at')
+                ->first()
+        );
     }
 
     /**
@@ -167,13 +164,8 @@ class ParcelController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateParcelRequest $request, $id)
     {
-        $request->validate([
-            'order_id' => 'required|numeric|exists:orders,id',
-            'carrier_id' => 'required|numeric|exists:carriers,id'
-        ]);
-
         $branch_id = auth()->user()->employee->branch_id;
 
         $order = Order::where('id', $request->input('order_id'))
@@ -197,12 +189,10 @@ class ParcelController extends Controller
 
         $parcel = Parcel::where('tracking', $id)
             ->whereNull('deleted_at')
-            ->update($request->all());
+            ->update($request->only(['order_id', 'carrier_id']));
 
-        if ($parcel) {
-            return response('Successfully updated.', 200);
-        }
-        return response('Failed.', 400);
+        return $parcel ? response('Successfully updated.')
+            : response('Failed.', 400);
     }
 
     /**
@@ -213,12 +203,8 @@ class ParcelController extends Controller
      */
     public function destroy($id)
     {
-        $parcel = Parcel::find($id);
+        Parcel::find($id)->delete();
 
-        if ($parcel) {
-            $parcel->delete();
-            return response('Successfully deleted.', 200);
-        }
-        return response('Failed.', 400);
+        return response('Successfully deleted.');
     }
 }

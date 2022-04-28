@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreIngredientRequest;
+use App\Http\Requests\UpdateIngredientRequest;
 use App\Http\Resources\IngredientResource;
 use App\Models\Employee;
 use App\Models\Ingredients;
@@ -11,7 +13,7 @@ use Illuminate\Support\Facades\Storage;
 class IngredientController extends Controller
 {
 
-    public function count(Request $request)
+    public function count()
     {
         $branch_id = auth()->user()->employee->branch_id;
 
@@ -59,41 +61,28 @@ class IngredientController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreIngredientRequest $request)
     {
-        $request->validate([
-            'image' => 'required|image|mimes:jpeg,png,jpg|max:2048',
-            'name' => 'required|string',
-            'unit' => 'required|string',
-            'stock' => 'required|numeric|min:0',
-            'low_level' => 'required|numeric|min:0',
-            'cost' => 'required|numeric|min:0',
-            'category' => 'required|string'
-        ]);
+        if ($request->hasFile('image')) {
+            $branch_id = auth()->user()->employee->branch_id;
+            $image = $request->file('image');
+            $imageName = pathinfo($image->hashName(), PATHINFO_FILENAME) . '.' . $image->extension();
+            Storage::disk('public')->putFileAs('ingredient_img', $image, $imageName);
 
-        $branch_id = auth()->user()->employee->branch_id;
+            $ingredient = Ingredients::create([
+                'branch_id' => $branch_id,
+                'image' => $imageName,
+                'name' => $request->name,
+                'unit' => $request->unit,
+                'stock' => $request->stock,
+                'low_level' => $request->low_level,
+                'cost' => $request->cost,
+                'category' => $request->category
+            ]);
 
-        $image = $request->file('image');
-        $extension = $image->extension();
-        $name = pathinfo($image->hashName(), PATHINFO_FILENAME);
-        $imageName = time() . '_' . $name . '.' . $extension;
-        Storage::disk('public')->putFileAs('ingredient_img', $image, $imageName);
-
-
-        $data = [
-            'branch_id' => $branch_id,
-            'image' => $imageName,
-            'name' => $request->name,
-            'unit' => $request->unit,
-            'stock' => $request->stock,
-            'low_level' => $request->low_level,
-            'cost' => $request->cost,
-            'category' => $request->category
-        ];
-
-        $ingredient = Ingredients::create($data);
-        if ($ingredient) {
-            return response("Successfully added.", 201);
+            if ($ingredient) {
+                return response("Successfully added.", 201);
+            }
         }
         return response("Failed.", 400);
     }
@@ -118,25 +107,14 @@ class IngredientController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateIngredientRequest $request, $id)
     {
-        $request->validate([
-            'branch_id' => 'required|numeric|exists:branches,id',
-            'name' => 'required|string',
-            'unit' => 'required|string',
-            'stock' => 'required|numeric|min:0',
-            'low_level' => 'required|numeric|min:0',
-            'cost' => 'required|numeric|min:0',
-            'category' => 'required|string'
-        ]);
-
         $ingredient = Ingredients::where('id', $id)
             ->whereNull('deleted_at')
-            ->get()
             ->first();
         if ($ingredient) {
             if ($ingredient->update($request->all())) {
-                return response("Successfully updated.", 200);
+                return response("Successfully updated.");
             }
         }
         return response("Failed.", 400);
@@ -150,11 +128,7 @@ class IngredientController extends Controller
      */
     public function destroy($id)
     {
-        $ingredient = Ingredients::find($id);
-        if ($ingredient) {
-            $ingredient->delete();
-            return response('Successfully deleted.', 200);
-        }
-        return response('Failed.', 400);
+        Ingredients::find($id)->delete();
+        return response('Successfully deleted.');
     }
 }

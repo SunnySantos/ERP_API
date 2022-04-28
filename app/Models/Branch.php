@@ -12,8 +12,7 @@ class Branch extends Model
     protected $fillable = [
         'name',
         'address',
-        'phone_number',
-        'started_at'
+        'phone_number'
     ];
 
     public function employee()

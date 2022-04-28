@@ -2,25 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ExpensesReportRequest;
+use App\Http\Requests\SalesReportRequest;
 use App\Http\Resources\ExpenseReportResource;
-use App\Models\Employee;
 use App\Models\Expenses;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
-    public function sales(Request $request)
+    public function sales(SalesReportRequest $request)
     {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
-        ]);
-
-        $user = auth()->user();
-
-        $employee = Employee::where('user_id', $user->id)->first();
-
+        $employee = auth()->user()->employee;
 
         $records = DB::table('orders as a')
             ->join('carts as b', 'a.id', '=', 'b.order_id')
@@ -57,19 +50,13 @@ class ReportController extends Controller
         ], 200);
     }
 
-    public function expenses(Request $request)
+    public function expenses(ExpensesReportRequest $request)
     {
-        $request->validate([
-            'from' => 'required|date',
-            'to' => 'required|date'
-        ]);
-
         $start = $request->input('from');
         $end = $request->input('to');
 
         $expenses = [];
         $total = 0;
-
 
         if (preg_match("/^\d{4}-\d{2}-\d{2}$/", $start) && preg_match("/^\d{4}-\d{2}-\d{2}$/", $end)) {
             $expenses = Expenses::whereDate('created_at', '>=', $start)

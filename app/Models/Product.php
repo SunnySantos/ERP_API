@@ -16,8 +16,7 @@ class Product extends Model
         'name',
         'description',
         'category_id',
-        'price',
-        'cost'
+        'price'
     ];
 
     public function stock()
@@ -33,5 +32,10 @@ class Product extends Model
     public function category()
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function cakeProject()
+    {
+        return $this->belongsTo(CakeProject::class, 'cake_project_id');
     }
 }

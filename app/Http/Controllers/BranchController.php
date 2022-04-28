@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreBranchRequest;
+use App\Http\Requests\UpdateBranchRequest;
 use App\Http\Resources\BranchResource;
 use App\Import\BranchImport;
 use App\Models\Branch;
-use Illuminate\Validation\Rule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -18,7 +19,10 @@ class BranchController extends Controller
      */
     public function index()
     {
-        return Branch::whereNull('deleted_at')->paginate(10);
+        return BranchResource::collection(
+            Branch::whereNull('deleted_at')
+                ->paginate(10)
+        );
     }
 
     public function dropdown()
@@ -41,8 +45,7 @@ class BranchController extends Controller
             'id',
             'name',
             'address',
-            'phone_number',
-            'started_at'
+            'phone_number'
         ];
 
         $file = fopen($filename, 'w');
@@ -74,25 +77,12 @@ class BranchController extends Controller
         unlink($filename);
     }
 
-    /**
-     * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function allStore()
-    {
-        return Branch::select(['name', 'address', 'phone_number'])
-            ->where('deleted_at', null)
-            ->get();
-    }
 
     public function count()
     {
-        $count = Branch::select('id')
-            ->where('deleted_at', null)
+        return Branch::select('id')
+            ->whereNull('deleted_at')
             ->count();
-
-        return $count;
     }
 
     public function sales($id)
@@ -133,17 +123,12 @@ class BranchController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreBranchRequest $request)
     {
-        $request->validate([
-            'name' => 'required|unique:branches|string|regex:/^[A-Za-z\s]*$/',
-            'address' => 'required|string',
-            'phone_number' => 'required|numeric|regex:/^9\d{9}$/|unique:branches',
-            'started_at' => 'required'
-        ]);
-
-        Branch::create($request->all());
-        return response("Successfully created!", 201);
+        Branch::create($request->only([
+            'name', 'address', 'phone_number'
+        ]));
+        return response("Successfully created.", 201);
     }
 
     /**
@@ -154,27 +139,13 @@ class BranchController extends Controller
      */
     public function show($id)
     {
-        $branch = Branch::where('deleted_at', null)
-            ->where('id', $id)
-            ->first();
-        if ($branch === null) {
-            return response('Not found', 400);
-        }
-        return response($branch, 200);
+        return  BranchResource::make(
+            Branch::whereNull('deleted_at')
+                ->where('id', $id)
+                ->first()
+        );
     }
 
-    /**
-     * Display the specified resource.
-     *
-     * @param  string  $name
-     * @return \Illuminate\Http\Response
-     */
-    public function search($name)
-    {
-        return Branch::where('name', 'like', '%' . $name . '%')
-            ->where('deleted_at', null)
-            ->paginate(10);
-    }
 
     /**
      * Update the specified resource in storage.
@@ -183,21 +154,16 @@ class BranchController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateBranchRequest $request, $id)
     {
-        $request->validate([
-            'name' => 'required|string|regex:/^[A-Za-z\s]*$/',
-            'address' => 'required|string',
-            'phone_number' => ['required', 'string', 'regex:/^9\d{9}$/', Rule::unique("branches", "phone_number")->ignore($id)],
-            'started_at' => 'required'
-        ]);
-        $branch = Branch::find($id);
-        if ($branch !== null) {
-            if ($branch->update($request->all())) {
-                return response("Successfully updated!", 200);
-            }
+        $branch = Branch::where('id', $id)
+            ->update($request->only([
+                'name', 'address', 'phone_number'
+            ]));
+        if ($branch) {
+            return response("Successfully updated.");
         }
-        return response("Branch does not exist!", 400);
+        return response("Failed.", 400);
     }
 
     /**
@@ -208,11 +174,7 @@ class BranchController extends Controller
      */
     public function destroy($id)
     {
-        $branch =  Branch::find($id);
-        if ($branch !== null) {
-            $branch->delete();
-            return response("Successfully deleted!", 200);
-        }
-        return response("Branch does not exist!", 400);
+        Branch::find($id)->delete();
+        return response("Successfully deleted.");
     }
 }

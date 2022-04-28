@@ -11,8 +11,13 @@ class Overtime extends Model
     use HasFactory, SoftDeletes;
     protected $fillable = [
         'employee_id',
-        'overtime_date',
+        'attendance_id',
         'hours',
         'rate'
     ];
+
+    public function attendance()
+    {
+        return $this->belongsTo(Attendance::class);
+    }
 }

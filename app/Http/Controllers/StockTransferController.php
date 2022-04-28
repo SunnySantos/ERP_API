@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\IndexStockTransferRequest;
 use App\Http\Requests\StockTransferRequest;
 use App\Http\Resources\StockTransferResource;
-use App\Models\Employee;
 use App\Models\Stock;
 use App\Models\StockTransfer;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class StockTransferController extends Controller
 {
@@ -17,12 +16,8 @@ class StockTransferController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index(Request $request)
+    public function index(IndexStockTransferRequest $request)
     {
-        $request->validate([
-            'sender' => 'required|boolean'
-        ]);
-
         $branch_id = auth()->user()->employee->branch_id;
         $isSender = $request->input('sender');
 

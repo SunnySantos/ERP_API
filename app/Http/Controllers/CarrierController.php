@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreCarrierRequest;
+use App\Http\Requests\UpdateCarrierRequest;
 use App\Http\Resources\CarrierResource;
 use App\Import\CarrierImport;
 use App\Models\Carrier;
-use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class CarrierController extends Controller
 {
@@ -71,18 +71,12 @@ class CarrierController extends Controller
     {
         $search = $request->input('search');
 
-        if ($search !== "null") {
-            return CarrierResource::collection(
-                Carrier::where('id', $search)
-                    ->whereNull('deleted_at')
-                    ->orderBy('id', 'DESC')
-                    ->paginate(10)
-            );
-        }
+        $carriers = Carrier::whereNull('deleted_at');
+
+        if ($search !== "null") $carriers->where('id', $search);
 
         return CarrierResource::collection(
-            Carrier::whereNull('deleted_at')
-                ->orderBy('id', 'DESC')
+            $carriers->orderBy('id', 'DESC')
                 ->paginate(10)
         );
     }
@@ -93,17 +87,12 @@ class CarrierController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreCarrierRequest $request)
     {
-        $request->validate([
-            'firstname' => 'required|string',
-            'middlename' => 'nullable|string',
-            'lastname' => 'required|string',
-            'address' => 'required|string',
-            'phone_number' => 'required|string'
-        ]);
-
-        Carrier::create($request->all());
+        Carrier::create($request->only([
+            'firstname', 'middlename', 'lastname',  'address', 'phone_number'
+        ]));
+        
         return response('Successfully created.', 201);
     }
 
@@ -115,9 +104,11 @@ class CarrierController extends Controller
      */
     public function show($id)
     {
-        return Carrier::where('id', $id)
-            ->whereNull('deleted_at')
-            ->first();
+        return CarrierResource::make(
+            Carrier::where('id', $id)
+                ->whereNull('deleted_at')
+                ->first()
+        );
     }
 
     /**
@@ -127,21 +118,15 @@ class CarrierController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateCarrierRequest $request, $id)
     {
-        $request->validate([
-            'firstname' => 'required|string',
-            'middlename' => 'nullable|string',
-            'lastname' => 'required|string',
-            'address' => 'required|string',
-            'phone_number' => 'required|string'
-        ]);
-
         $carrier = Carrier::where('id', $id)
-            ->update($request->all());
-        if ($carrier) {
-            return response('Successfully updated.', 200);
-        }
+            ->update($request->only([
+                'firstname', 'middlename', 'lastname',  'address', 'phone_number'
+            ]));
+
+        if ($carrier) return response('Successfully updated.');
+
         return response('Failed.', 400);
     }
 
@@ -153,12 +138,8 @@ class CarrierController extends Controller
      */
     public function destroy($id)
     {
-        $carrier = Carrier::find($id);
+        Carrier::find($id)->delete();
 
-        if ($carrier) {
-            $carrier->delete();
-            return response('Successfully deleted.', 200);
-        }
-        return response('Failed.', 400);
+        return response('Successfully deleted.');
     }
 }

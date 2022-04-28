@@ -16,8 +16,9 @@ class CreateOvertimesTable extends Migration
         Schema::create('overtimes', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('employee_id');
-            $table->foreign('employee_id')->references('id')->on('employees')->onDelete('cascade');
-            $table->date('overtime_date');
+            $table->foreign('employee_id')->references('id')->on('employees')->cascadeOnDelete();
+            $table->unsignedBigInteger('attendance_id');
+            $table->foreign('attendance_id')->references('id')->on('attendances')->cascadeOnUpdate()->cascadeOnDelete();
             $table->integer('hours');
             $table->decimal('rate', $precision = 10, $scale = 2)->default(0);
             $table->timestamps();

@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreOvertimeRequest;
+use App\Http\Requests\UpdateOvertimeRequest;
+use App\Http\Resources\OvertimeResource;
 use App\Models\Overtime;
-use Illuminate\Http\Request;
 
 class OvertimeController extends Controller
 {
@@ -14,8 +16,10 @@ class OvertimeController extends Controller
      */
     public function index()
     {
-        return Overtime::whereNull('deleted_at')
-            ->paginate(10);
+        return OvertimeResource::collection(
+            Overtime::whereNull('deleted_at')
+                ->paginate(10)
+        );
     }
 
     /**
@@ -24,22 +28,12 @@ class OvertimeController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreOvertimeRequest $request)
     {
-        $request->validate([
-            'employee_id' => 'required|numeric|exists:employees,id',
-            'overtime_date' => 'required|date',
-            'hours' => 'required|numeric',
-            'rate' => 'required|numeric'
-        ]);
-
         $overtime = Overtime::create($request->all());
 
-        if ($overtime) {
-            return response('Successfully created.', 201);
-        }
-
-        return response('Failed.', 400);
+        return $overtime ? response('Successfully created.', 201)
+            : response('Failed.', 400);
     }
 
     /**
@@ -50,9 +44,11 @@ class OvertimeController extends Controller
      */
     public function show($id)
     {
-        return Overtime::where('id', $id)
-            ->whereNull('deleted_at')
-            ->first();
+        return OvertimeResource::make(
+            Overtime::where('id', $id)
+                ->whereNull('deleted_at')
+                ->first()
+        );
     }
 
     /**
@@ -62,28 +58,17 @@ class OvertimeController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateOvertimeRequest $request, $id)
     {
-        $request->validate([
-            'employee_id' => 'required|numeric|exists:employees,id',
-            'overtime_date' => 'required|date',
-            'hours' => 'required|numeric',
-            'rate' => 'required|numeric'
-        ]);
-
         $overtime = Overtime::where('id', $id)
             ->whereNull('deleted_at')
             ->update([
-                'employee_id' => $request->employee_id,
-                'overtime_date' => $request->overtime_date,
                 'hours' => $request->hours,
                 'rate' => $request->rate
             ]);
 
-        if ($overtime) {
-            return response('Successfully updated.', 200);
-        }
-        return response('Failed.', 400);
+        return $overtime ? response('Successfully updated.')
+            : response('Failed.', 400);
     }
 
     /**
@@ -94,12 +79,8 @@ class OvertimeController extends Controller
      */
     public function destroy($id)
     {
-        $overtime = Overtime::find($id);
+        Overtime::find($id)->delete();
 
-        if ($overtime) {
-            $overtime->delete();
-            return response('Successfully deleted.', 200);
-        }
-        return response('Failed.', 400);
+        return response('Successfully deleted.');
     }
 }

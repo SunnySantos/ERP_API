@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\LoginRequest;
+use App\Http\Requests\UpdatePasswordRequest;
 use App\Models\Customer;
 use App\Models\Employee;
 use App\Models\Supplier;
@@ -52,13 +54,8 @@ class UserController extends Controller
         return response("Invalid.", 400);
     }
 
-    public function loginCustomer(Request $request)
+    public function loginCustomer(LoginRequest $request)
     {
-        $request->validate([
-            'username' => 'required|string',
-            'password' => 'required|string'
-        ]);
-
         $user = User::where('username', $request->username)
             ->where('role_id', 2)
             ->first();
@@ -130,13 +127,8 @@ class UserController extends Controller
         return response("Logged out", 200);
     }
 
-    public function loginAdmin(Request $request)
+    public function loginAdmin(LoginRequest $request)
     {
-        $request->validate([
-            'username' => 'required|string',
-            'password' => 'required|string'
-        ]);
-
         $user = User::where('username', $request->username)
             ->first();
 
@@ -169,5 +161,22 @@ class UserController extends Controller
         auth()->user()->tokens()->delete();
 
         return response("Logged out", 200);
+    }
+
+    public function changePassword(UpdatePasswordRequest $request)
+    {
+        $user = User::where('id', auth()->id())->first();
+
+        if ($request->password === $request->old_password) {
+            return response(["errors" => ["password" => "Old and new password are same."]], 422);
+        }
+
+
+        if ($user && Hash::check($request->old_password, $user->password)) {
+            $user->password = bcrypt($request->password);
+            $user->save();
+            return response('Successfully updated.');
+        }
+        return response(["errors" => ["old_password" => "Wrong old password."]], 422);
     }
 }

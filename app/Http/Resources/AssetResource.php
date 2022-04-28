@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 class AssetResource extends JsonResource
 {
@@ -14,6 +15,14 @@ class AssetResource extends JsonResource
      */
     public function toArray($request)
     {
+        $base64 = null;
+        $path = $this->path;
+        $content = Storage::get('public/glb_file/' . $path);
+        $exist = Storage::disk('public')->exists('glb_file/' . $path);
+        if ($exist) {
+            $base64 = "data:application/glb;base64," . base64_encode($content);
+        }
+
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -22,7 +31,7 @@ class AssetResource extends JsonResource
             'path' => $this->path,
             'shape' => $this->shape,
             'size' => $this->size,
-            'base64' => $this->base64
+            'base64' => $base64
         ];
     }
 }

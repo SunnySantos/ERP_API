@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreScheduleRequest;
+use App\Http\Requests\UpdateScheduleRequest;
+use App\Http\Resources\ScheduleResource;
 use App\Import\ScheduleImport;
 use App\Models\Schedule;
 use Illuminate\Http\Request;
@@ -12,8 +15,10 @@ class ScheduleController extends Controller
 
     public function dropdown()
     {
-        return Schedule::whereNull('deleted_at')
-            ->get();
+        return ScheduleResource::collection(
+            Schedule::whereNull('deleted_at')
+                ->get()
+        );
     }
 
     public function importCSV(Request $request)
@@ -69,8 +74,10 @@ class ScheduleController extends Controller
      */
     public function index()
     {
-        return Schedule::whereNull('deleted_at')
-            ->paginate(10);
+        return ScheduleResource::collection(
+            Schedule::whereNull('deleted_at')
+                ->paginate(10)
+        );
     }
 
     /**
@@ -79,13 +86,8 @@ class ScheduleController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreScheduleRequest $request)
     {
-        $request->validate([
-            'time_in' => 'required|string',
-            'time_out' => 'required|string'
-        ]);
-
         Schedule::create($request->all());
         return response('Successfully created.', 201);
     }
@@ -98,9 +100,11 @@ class ScheduleController extends Controller
      */
     public function show($id)
     {
-        return Schedule::where('id', $id)
-            ->whereNull('deleted_at')
-            ->first();
+        return ScheduleResource::make(
+            Schedule::where('id', $id)
+                ->whereNull('deleted_at')
+                ->first()
+        );
     }
 
     /**
@@ -110,23 +114,13 @@ class ScheduleController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateScheduleRequest $request, $id)
     {
-        $request->validate([
-            'time_in' => 'required|string',
-            'time_out' => 'required|string'
-        ]);
-
         $schedule = Schedule::where('id', $id)
-            ->update([
-                'time_in' => $request->time_in,
-                'time_out' => $request->time_out,
-            ]);
+            ->update($request->only(['time_in', 'time_out']));
 
-        if ($schedule) {
-            return response('Successfully updated.', 200);
-        }
-        return response('Failed.', 400);
+        return $schedule ? response('Successfully updated.')
+            : response('Failed.', 400);
     }
 
     /**
@@ -137,12 +131,15 @@ class ScheduleController extends Controller
      */
     public function destroy($id)
     {
-        $schedule = Schedule::find($id);
+        Schedule::find($id)->delete();
 
-        if ($schedule) {
-            $schedule->delete();
-            return response('Successfully deleted.', 200);
-        }
-        return response('Failed.', 400);
+        return response('Successfully deleted.');
+    }
+
+    public function deleteChecked($ids)
+    {
+        Schedule::whereIn('id', explode(',', $ids))->delete();
+
+        return response('Successfully deleted.');
     }
 }

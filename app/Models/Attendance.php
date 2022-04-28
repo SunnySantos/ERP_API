@@ -13,7 +13,22 @@ class Attendance extends Model
         'employee_id',
         'attend_date',
         'time_in',
-        'time_out',
-        'overtime'
+        'time_out'
     ];
+
+    protected $hidden = [
+        'created_at',
+        'updated_at',
+        'deleted_at'
+    ];
+
+    public function employee()
+    {
+        return $this->belongsTo(Employee::class);
+    }
+
+    public function overtime()
+    {
+        return $this->hasOne(Overtime::class);
+    }
 }

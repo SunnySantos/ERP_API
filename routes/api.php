@@ -3,12 +3,10 @@
 use App\Http\Controllers\ApplicantController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\SupplierController;
-use App\Http\Controllers\ProductController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\AuthCustomerController;
 use App\Http\Controllers\OrderController;
-use App\Http\Controllers\CustomerOrderController;
 use App\Http\Controllers\BranchSupplierInvoiceController;
 use App\Http\Controllers\BranchSupplierOrderController;
 use App\Http\Controllers\BranchSupplierOrderItem;
@@ -16,12 +14,11 @@ use App\Http\Controllers\CareerController;
 use App\Http\Controllers\CarrierController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ChatController;
-use App\Http\Controllers\CustomProductController;
 use App\Http\Controllers\DatabaseBackupController;
 use App\Http\Controllers\DeductionController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\EmployeeScheduleController;
 use App\Http\Controllers\ExpensesController;
-use App\Http\Controllers\ParcelController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PositionController;
 use App\Http\Controllers\ProfitController;
@@ -83,13 +80,17 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('/supplier-export-csv', [SupplierController::class, 'exportCSV']);
     Route::resource('supplier', 'SupplierController');
 
-    Route::get('/product-search/{name}', [ProductController::class, 'search']);
-    Route::get('/product-count', [ProductController::class, 'count']);
-    Route::post('/product', [ProductController::class, 'store']);
-    Route::post('/custom-product', [ProductController::class, 'storeCustom']);
-    Route::post('/update-product/{id}', [ProductController::class, 'update']);
-    Route::get('/product/{id}', [ProductController::class, 'show']);
-    Route::delete('/product/{id}', [ProductController::class, 'destroy']);
+    Route::get('/product-search/{name}', 'ProductController@search');
+    Route::get('/product-count', 'ProductController@count');
+    Route::post('/product', 'ProductController@store');
+    Route::post('/custom-product', 'ProductController@storeCustom');
+    Route::post('/update-product/{id}', 'ProductController@update');
+    Route::get('/product/{id}', 'ProductController@show');
+    Route::delete('/product/{id}', 'ProductController@destroy');
+    Route::get('/product-dropdown', 'ProductController@dropdown');
+    Route::get('/product', 'ProductController@index');
+    Route::post('/product-import-csv', 'ProductController@importCSV');
+    Route::get('/product-export-csv', 'ProductController@exportCSV');
 
     Route::get('/purchased-by-branch-id/{id}', 'BranchController@purchased');
     Route::get('/sales-by-branch-id/{id}', 'BranchController@sales');
@@ -119,13 +120,10 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::delete('/applicant/{id}', [ApplicantController::class, 'destroy']);
 
     Route::put('/order-payment/{id}', 'OrderController@payment');
-    // Route::get('/order-processed-search/{id}', [OrderController::class, 'showProcessedOrderById']);
-    // Route::get('/order-processed', [OrderController::class, 'showProcessedOrder']);
-    Route::get('/order-count', [OrderController::class, 'pendingOrderCount']);
-    // Route::get('/order-by-customer-id', 'OrderController@showOrdersByCustomerId');
-    // Route::put('/order-check-out/{id}', [OrderController::class, 'checkout']);
-    // Route::put('/order-received/{id}', [OrderController::class, 'received']);
-    // Route::put('/cancel-order/{id}', [OrderController::class, 'cancel']);
+    Route::get('/order-pending-count', [OrderController::class, 'pendingCount']);
+    Route::get('/order-delivered-count', [OrderController::class, 'deliveredCount']);
+    Route::get('/orders-by-customer', 'OrderController@getByCustomerId');
+    Route::get('/order-chart', 'OrderController@chart');
     Route::resource('order', 'OrderController');
 
     Route::get('/cart-count', 'CartController@count');
@@ -137,8 +135,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::put('/customer-update-basic-information/{id}', [CustomerController::class, 'updateBasicInformation']);
     Route::get('/customer-basic-information/{id}', [CustomerController::class, 'showBasicInformation']);
     Route::get('/customer-count', [CustomerController::class, 'count']);
-    Route::get('/customer-search/{key}', [CustomerController::class, 'search']);
-    Route::get('/customer-export-csv', [CustomerController::class, 'exportCSV']);
+    Route::get('/customer-export-csv', 'CustomerController@exportCSV');
     Route::resource('customer', 'CustomerController');
 
 
@@ -162,6 +159,7 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
 
     Route::get('/sales-ave-by-year', [SalesController::class, 'getWholeYearSales']);
     Route::get('/sales-ave-by-month', [SalesController::class, 'getSalesAveByMonth']);
+    Route::get('/total-sales-by-month', [SalesController::class, 'totalSales']);
 
     Route::get('/total-revenue-by-year', [RevenueController::class, 'getWholeYearRevenue']);
     Route::get('/total-revenue-by-month', [RevenueController::class, 'getRevenueByMonth']);
@@ -173,10 +171,13 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('/attendance-min-hours', [AttendanceController::class, 'minHours']);
     Route::get('/attendance-ave-hours', [AttendanceController::class, 'aveHours']);
     Route::get('/attendance-total-hours', [AttendanceController::class, 'totalHours']);
-    Route::get('/search-attendance', [AttendanceController::class, 'search']);
-    Route::get('/attendance-by-branch', [AttendanceController::class, 'showByBranchId']);
+    // Route::get('/search-attendance', [AttendanceController::class, 'search']);
+    // Route::get('/attendance-by-branch', [AttendanceController::class, 'showByBranchId']);
     Route::post('/attendance-import-csv', [AttendanceController::class, 'importCSV']);
     Route::get('/attendance-export-csv', [AttendanceController::class, 'exportCSV']);
+    Route::get('/present-today', 'AttendanceController@presentToday');
+    Route::get('/absent-today', 'AttendanceController@absentToday');
+    Route::get('/attendance-chart', 'AttendanceController@chart');
     Route::resource('attendance', 'AttendanceController');
 
     Route::get('/payroll-count', [PayrollController::class, 'count']);
@@ -209,11 +210,14 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
 
 
     // Route::get('/employee-search/{key}', [EmployeeController::class, 'search']);
-    Route::get('/employee/list/count', 'EmployeeController@count');
+    Route::get('/employee-count', 'EmployeeController@count');
+    Route::get('/employee-account', 'EmployeeController@account');
+    Route::post('/employee-import-csv', 'EmployeeController@importCSV');
+    Route::get('/employee-export-csv', 'EmployeeController@exportCSV');
     Route::resource('employee', 'EmployeeController');
 
-    Route::post('/parcel-import-csv', [ParcelController::class, 'importCSV']);
-    Route::get('/parcel-export-csv', [ParcelController::class, 'exportCSV']);
+    Route::post('/parcel-import-csv', 'ParcelController@importCSV');
+    Route::get('/parcel-export-csv', 'ParcelController@exportCSV');
     Route::resource('parcel', 'ParcelController');
 
     Route::get('/ingredient-count', 'IngredientController@count');
@@ -231,7 +235,28 @@ Route::group(['middleware' => ['auth:sanctum']], function () {
     Route::get('/project-by-id/{id}', 'CakeProjectController@preview');
     Route::resource('project', 'CakeProjectController');
     Route::resource('project-assets', 'ProjectAssetController');
+
+    Route::post('/deduction-import-csv', [DeductionController::class, 'importCSV']);
+    Route::get('/deduction-export-csv', [DeductionController::class, 'exportCSV']);
+    Route::delete('/checked-deductions/{ids}', [DeductionController::class, 'deleteChecked']);
+    Route::resource('deduction', 'DeductionController');
+
+    Route::post('/change-password', 'UserController@changePassword');
+
+    Route::post('employee-schedule-import-csv', 'EmployeeScheduleController@importCSV');
+    Route::get('employee-schedule-export-csv', 'EmployeeScheduleController@exportCSV');
+    Route::resource('employee-schedule', 'EmployeeScheduleController');
+
+    Route::get('/schedule-dropdown', [ScheduleController::class, 'dropdown']);
+    Route::post('/schedule-import-csv', [ScheduleController::class, 'importCSV']);
+    Route::get('/schedule-export-csv', [ScheduleController::class, 'exportCSV']);
+    Route::delete('/checked-schedule/{ids}', [ScheduleController::class, 'deleteChecked']);
+    Route::resource('schedule', 'ScheduleController');
 });
+
+
+
+
 
 Route::get('/cake-model', 'CakeModelController@index');
 Route::get('/cake-model/{id}', 'CakeModelController@show');
@@ -249,14 +274,9 @@ Route::post('/position-import-csv', [PositionController::class, 'importCSV']);
 Route::get('/position-export-csv', [PositionController::class, 'exportCSV']);
 Route::resource('position', 'PositionController');
 
-Route::get('/schedule-dropdown', [ScheduleController::class, 'dropdown']);
-Route::post('/schedule-import-csv', [ScheduleController::class, 'importCSV']);
-Route::get('/schedule-export-csv', [ScheduleController::class, 'exportCSV']);
-Route::resource('schedule', 'ScheduleController');
 
-Route::post('/deduction-import-csv', [DeductionController::class, 'importCSV']);
-Route::get('/deduction-export-csv', [DeductionController::class, 'exportCSV']);
-Route::resource('deduction', 'DeductionController');
+
+
 
 Route::get('/category-dropdown', [CategoryController::class, 'dropdown']);
 Route::post('/category-import-csv', [CategoryController::class, 'importCSV']);
@@ -283,10 +303,8 @@ Route::post('/customer-verify-name', [CustomerController::class, 'verifyName']);
 Route::post('/customer-verify-phone', [CustomerController::class, 'verifyPhone']);
 Route::post('/customer-verify-account', [CustomerController::class, 'verifyAccount']);
 
-Route::get('/product-list', [ProductController::class, 'catalogue']);
-Route::post('/product-import-csv', [ProductController::class, 'importCSV']);
-Route::get('/product-export-csv', [ProductController::class, 'exportCSV']);
-Route::get('/product', [ProductController::class, 'index']);
+Route::get('/product-list', 'ProductController@catalogue');
+
 
 Route::get('/career-count', [CareerController::class, 'count']);
 Route::get('/career-list/{count}', [CareerController::class, 'list']);
@@ -295,16 +313,10 @@ Route::get('/career/{id}', [CareerController::class, 'show']);
 Route::get('/career', [CareerController::class, 'index']);
 Route::post('/applicant', [ApplicantController::class, 'store']);
 
-Route::get('/branch-search/{name}', [BranchController::class, 'search']);
-Route::get('/stores', [BranchController::class, 'allStore']);
 
 
-
-
-
-
-Route::get('/order/pending/count', [CustomerOrderController::class, 'pendingCount']);
-Route::get('/order/total-purchased', [CustomerOrderController::class, 'totalPurchased']);
+// Route::get('/order/pending/count', [CustomerOrderController::class, 'pendingCount']);
+// Route::get('/order/total-purchased', [CustomerOrderController::class, 'totalPurchased']);
 
 
 

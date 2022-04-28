@@ -2,17 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StorePositionRequest;
+use App\Http\Requests\UpdatePositionRequest;
+use App\Http\Resources\PositionResource;
 use App\Import\PositionImport;
 use App\Models\Position;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class PositionController extends Controller
 {
     public function dropdown()
     {
-        return Position::whereNull('deleted_at')
-            ->get();
+        return PositionResource::collection(
+            Position::whereNull('deleted_at')
+                ->get()
+        );
     }
 
     /**
@@ -22,15 +26,16 @@ class PositionController extends Controller
      */
     public function index(Request $request)
     {
+        $positions = Position::whereNull('deleted_at');
 
         if ($request->search !== "null") {
-            return Position::whereNull('deleted_at')
-                ->where('id', 'like', '%' . $request->search . '%')
-                ->orWhere('title', 'like', '%' . $request->search . '%')
-                ->paginate(10);
+            $positions->where('id', 'like', '%' . $request->search . '%')
+                ->orWhere('title', 'like', '%' . $request->search . '%');
         }
-        return Position::whereNull('deleted_at')
-            ->paginate(10);
+        return PositionResource::collection(
+            $positions->orderBy('id', 'DESC')
+                ->paginate(10)
+        );
     }
 
     public function importCSV(Request $request)
@@ -85,14 +90,9 @@ class PositionController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StorePositionRequest $request)
     {
-        $request->validate([
-            'title' => 'required|string',
-            'rate' => 'required|numeric|min:0'
-        ]);
-
-        Position::create($request->all());
+        Position::create($request->only(['title', 'rate']));
         return response('Successfully created.', 201);
     }
 
@@ -104,9 +104,11 @@ class PositionController extends Controller
      */
     public function show($id)
     {
-        return Position::where('id', $id)
-            ->whereNull('deleted_at')
-            ->first();
+        return PositionResource::make(
+            Position::where('id', $id)
+                ->whereNull('deleted_at')
+                ->first()
+        );
     }
 
     /**
@@ -116,24 +118,14 @@ class PositionController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdatePositionRequest $request, $id)
     {
-        $request->validate([
-            'title' => 'required|string',
-            'rate' => 'required|numeric|min:0'
-        ]);
-
         $position = Position::where('id', $id)
             ->whereNull('deleted_at')
-            ->update([
-                'title' => $request->title,
-                'rate' => $request->rate
-            ]);
+            ->update($request->only(['title', 'rate']));
 
-        if ($position) {
-            return response('Successfully updated.', 200);
-        }
-        return response('Failed.', 400);
+        return $position ? response('Successfully updated.')
+            : response('Failed.', 400);
     }
 
     /**
@@ -144,12 +136,8 @@ class PositionController extends Controller
      */
     public function destroy($id)
     {
-        $position = Position::find($id);
+        Position::find($id)->delete();
 
-        if ($position) {
-            $position->delete();
-            return response('Successfully deleted.', 200);
-        }
-        return response('Failed.', 400);
+        return response('Successfully deleted.');
     }
 }

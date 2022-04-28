@@ -20,7 +20,6 @@ class CreateAttendancesTable extends Migration
             $table->date('attend_date');
             $table->time('time_in');
             $table->time('time_out');
-            $table->integer('overtime')->default(0);
             $table->timestamps();
             $table->softDeletes();
         });

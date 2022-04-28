@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreCakeModelRequest;
+use App\Http\Requests\UpdateCakeModelRequest;
 use App\Http\Resources\CakeModelResource;
 use App\Models\CakeModel;
 use Illuminate\Http\Request;
@@ -34,38 +36,37 @@ class CakeModelController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreCakeModelRequest $request)
     {
-        $request->validate([
-            'zip_file' => 'required|file|mimes:zip'
-        ]);
+        if ($request->hasFile('zip_file')) {
+            $file = $request->file('zip_file');
+            $zip = new ZipArchive();
+            $path = $file->path();
+            $status = $zip->open($path);
 
-        $file = $request->file('zip_file');
-        $zip = new ZipArchive();
-        $path = $file->path();
-        $status = $zip->open($path);
-
-        if ($status !== true) {
-            return response("Could not open", 400);
-        }
-
-        for ($i = 0; $i < $zip->count(); $i++) {
-            $name = $zip->getNameIndex($i);
-            $exist = Storage::disk('public')->exists('glb_file/' . $name);
-            if ($exist) {
-                $zip->deleteName($name);
-            } else {
-                CakeModel::create([
-                    'name' => str_replace('.glb', '', $name),
-                    'path' => $name
-                ]);
+            if ($status !== true) {
+                return response("Could not open", 400);
             }
+
+            for ($i = 0; $i < $zip->count(); $i++) {
+                $name = $zip->getNameIndex($i);
+                $exist = Storage::disk('public')->exists('glb_file/' . $name);
+                if ($exist) {
+                    $zip->deleteName($name);
+                } else {
+                    CakeModel::create([
+                        'name' => str_replace('.glb', '', $name),
+                        'path' => $name
+                    ]);
+                }
+            }
+
+            $zip->extractTo(Storage::path('public/glb_file'));
+            $zip->close();
+
+            return response("Successfully imported.", 201);
         }
-
-        $zip->extractTo(Storage::path('public/glb_file'));
-        $zip->close();
-
-        return response("Successfully imported.", 201);
+        return response("Failed.", 400);
     }
 
     /**
@@ -76,7 +77,7 @@ class CakeModelController extends Controller
      */
     public function show($id)
     {
-        return response(CakeModelResource::make(CakeModel::find($id)), 200);
+        return CakeModelResource::make(CakeModel::find($id));
     }
 
     /**
@@ -86,15 +87,9 @@ class CakeModelController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateCakeModelRequest $request, $id)
     {
-        $request->validate([
-            'name' => 'required|string'
-        ]);
-
-        $file = $request->file('file');
-
-        if (is_null($file)) {
+        if (!$request->hasFile('file')) {
             $model = CakeModel::where('id', $id)
                 ->update([
                     'name' => $request->input('name')
@@ -104,6 +99,8 @@ class CakeModelController extends Controller
                 return response("Successfully updated.", 200);
             }
         }
+
+        $file = $request->file('file');
         $name = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
 
 

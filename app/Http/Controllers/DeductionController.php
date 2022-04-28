@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreDeductionRequest;
+use App\Http\Requests\UpdateDeductionRequest;
+use App\Http\Resources\DeductionResource;
 use App\Import\DeductionImport;
 use App\Models\Deduction;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class DeductionController extends Controller
 {
@@ -63,8 +65,11 @@ class DeductionController extends Controller
      */
     public function index()
     {
-        return Deduction::whereNull('deleted_at')
-            ->paginate(10);
+        return DeductionResource::collection(
+            Deduction::whereNull('deleted_at')
+                ->orderBy('id', 'DESC')
+                ->paginate(10)
+        );
     }
 
     /**
@@ -73,14 +78,11 @@ class DeductionController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreDeductionRequest $request)
     {
-        $request->validate([
-            'description' => 'required|string',
-            'amount' => 'required|numeric'
-        ]);
-
-        Deduction::create($request->all());
+        Deduction::create($request->only([
+            'description', 'amount'
+        ]));
         return response('Successfully created.', 201);
     }
 
@@ -92,9 +94,11 @@ class DeductionController extends Controller
      */
     public function show($id)
     {
-        return Deduction::where('id', $id)
-            ->whereNull('deleted_at')
-            ->first();
+        return DeductionResource::make(
+            Deduction::where('id', $id)
+                ->whereNull('deleted_at')
+                ->first()
+        );
     }
 
     /**
@@ -104,25 +108,14 @@ class DeductionController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(UpdateDeductionRequest $request, $id)
     {
-        $request->validate([
-            'description' => 'required|string',
-            'amount' => 'required|numeric'
-        ]);
-
         $deduction = Deduction::where('id', $id)
             ->whereNull('deleted_at')
-            ->update([
-                'description' => $request->description,
-                'amount' => $request->amount
-            ]);
+            ->update($request->only(['description', 'amount']));
 
-        if ($deduction) {
-            return response('Successfully updated.', 200);
-        }
-
-        return response('Failed.', 400);
+        return $deduction ? response('Successfully updated.')
+            : response('Failed.', 400);
     }
 
     /**
@@ -133,12 +126,15 @@ class DeductionController extends Controller
      */
     public function destroy($id)
     {
-        $deduction = Deduction::find($id);
+        Deduction::find($id)->delete();
 
-        if ($deduction) {
-            $deduction->delete();
-            return response('Successfully deleted.', 200);
-        }
-        return response('Failed.', 400);
+        return response('Successfully deleted.');
+    }
+
+    public function deleteChecked($ids)
+    {
+        Deduction::whereIn('id', explode(',', $ids))->delete();
+
+        return response('Successfully deleted.');
     }
 }

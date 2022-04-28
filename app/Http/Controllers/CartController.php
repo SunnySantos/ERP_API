@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreCartRequest;
+use App\Http\Requests\UpdateCartRequest;
 use App\Http\Resources\CartResource;
 use App\Models\Product;
 use App\Models\Cart;
@@ -45,14 +47,8 @@ class CartController extends Controller
         );
     }
 
-    public function store(Request $request)
+    public function store(StoreCartRequest $request)
     {
-        $request->validate([
-            'product_id' => 'nullable|numeric|exists:products,id',
-            'dedication' => 'nullable|string|max:80',
-            'quantity' => 'required|numeric|min:1'
-        ]);
-
         $customer_id = auth()->user()->customer->id;
 
         if ($customer_id) {
@@ -91,14 +87,8 @@ class CartController extends Controller
         return response('Failed.', 400);
     }
 
-    public function update(Request $request, $id)
+    public function update(UpdateCartRequest $request, $id)
     {
-        $request->validate([
-            'product_id' => 'nullable|numeric|exists:carts,product_id',
-            'dedication' => 'nullable|string',
-            'quantity' => 'required|numeric'
-        ]);
-
         $product = Product::where('id', $request->product_id)
             ->select('price')
             ->whereNull('deleted_at')
@@ -116,21 +106,15 @@ class CartController extends Controller
                     'total_price' => $total_price
                 ]);
 
-            if ($cart) {
-                return response('Successfully updated.', 200);
-            }
+            if ($cart) return response('Successfully updated.');
         }
         return response('Failed.', 400);
     }
 
     public function destroy($id)
     {
-        $cart = Cart::find($id);
+        Cart::find($id)->delete();
 
-        if ($cart) {
-            $cart->forceDelete();
-            return response('Successfully deleted.', 200);
-        }
-        return response('Failed.', 400);
+        return response('Successfully deleted.');
     }
 }

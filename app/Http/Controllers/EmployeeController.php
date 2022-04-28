@@ -2,14 +2,82 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreEmployeeRequest;
+use App\Http\Requests\UpdateBasicRequest;
+use App\Http\Requests\UpdateEmployeeJobRequest;
+use App\Http\Resources\EmployeeResource;
+use App\Import\EmployeeImport;
 use App\Models\Employee;
 use App\Models\User;
-use Illuminate\Validation\Rule;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class EmployeeController extends Controller
 {
+
+    public function importCSV(Request $request)
+    {
+        (new EmployeeImport)->queue($request->file('csv'), null, \Maatwebsite\Excel\Excel::CSV);
+        return response('Successfully imported.', 201);
+    }
+
+    public function exportCSV()
+    {
+        $filename = 'employees.csv';
+        $employees = EmployeeResource::collection(Employee::all());
+
+        $columns = [
+            'id',
+            'department',
+            'branch',
+            'position',
+            'firstname',
+            'middlename',
+            'lastname',
+            'address',
+            'sex',
+            'marital_status',
+            'birth',
+            'phone_number',
+            'hire'
+        ];
+
+        $file = fopen($filename, 'w');
+        fputcsv($file, $columns);
+
+        foreach ($employees as $employee) {
+            $row = [];
+
+            foreach ($columns as $column) {
+                if ($column === "department") {
+                    $row[$column] = $employee[$column]->name;
+                } elseif ($column === "branch") {
+                    $row[$column] = $employee[$column]->name;
+                } elseif ($column === "position") {
+                    $row[$column] = $employee[$column]->title;
+                } else {
+                    $row[$column] = $employee[$column];
+                }
+            }
+
+            fputcsv($file, $row);
+        }
+
+        fclose($file);
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename=' . basename($filename));
+        header('Content-Transfer-Encoding: binary');
+        header('Access-Control-Allow-Origin: *');
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate');
+        header('Pragma: public');
+        header('Content-Length: ' . filesize($filename));
+        ob_clean();
+        flush();
+        readfile($filename);
+        unlink($filename);
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -20,41 +88,22 @@ class EmployeeController extends Controller
         $search = $request->input('search');
         $branch_id = auth()->user()->employee->branch_id;
 
-        if (is_null($search) || $search === "null") {
-            return Employee::with([
-                'department',
-                'position',
-                'schedule',
-                'branch',
-                'user'
-            ])
-                ->where('branch_id', $branch_id)
-                ->paginate(10);
-        }
+        $employees = Employee::where('branch_id', $branch_id);
 
-        return Employee::with([
-            'department',
-            'position',
-            'schedule',
-            'branch',
-            'user'
-        ])
-            ->where('branch_id', $branch_id)
-            ->where('id', $search)
-            ->paginate(10);
+        if (!empty($search)) $employees->where('id', $search);
+
+        return EmployeeResource::collection(
+            $employees->orderBy('id', 'DESC')
+                ->paginate(10)
+        );
     }
 
-    public function count(Request $request)
+    public function count()
     {
-        $request->validate([
-            'branch_id' => 'required|numeric|exists:branches,id'
-        ]);
-
-        $count = Employee::select('id')
-            ->where('branch_id', $request->branch_id)
+        return Employee::select('id')
+            ->where('branch_id', auth()->user()->employee->branch_id)
             ->whereNull('deleted_at')
             ->count();
-        return $count;
     }
 
 
@@ -65,26 +114,8 @@ class EmployeeController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(Request $request)
+    public function store(StoreEmployeeRequest $request)
     {
-        $request->validate([
-            'branch_id' => 'required|numeric|exists:branches,id',
-            'firstname' => 'required|string|regex:/[A-Za-z]/',
-            'middlename' => 'nullable|string|regex:/[A-Za-z]/',
-            'lastname' => 'required|string|regex:/[A-Za-z]/',
-            'phone_number' => 'required|numeric|unique:employees|regex:/^9\d{9}$/',
-            'address' => 'required',
-            'sex' => 'required|in:Male,Female',
-            'position_id' => 'required|numeric|exists:positions,id',
-            'schedule_id' => 'required|numeric|exists:schedules,id',
-            'department_id' => 'required|numeric|exists:departments,id',
-            'hire' => 'required',
-            'birth' => 'required',
-            'username' => 'required|string|min:8|unique:users',
-            'password' => 'required|string|min:8|confirmed',
-            'marital_status' => 'required|string|in:Single,Married,Others'
-        ]);
-
         $user = User::create([
             'username' => $request->username,
             'password' => bcrypt($request->password),
@@ -92,14 +123,14 @@ class EmployeeController extends Controller
         ]);
         if ($user) {
             $request['user_id'] = $user->id;
+
             $employee = Employee::create($request->all());
-            if ($employee) {
-                return response('Successfully created.', 201);
-            }
+
+            if ($employee) return response('Successfully created.', 201);
+
             $user->forceDelete();
-            return response('Creation failed.', 400);
         }
-        return response("Invalid", 400);
+        return response("Failed", 400);
     }
 
     /**
@@ -110,15 +141,18 @@ class EmployeeController extends Controller
      */
     public function show($id)
     {
-        return Employee::with([
-            'department',
-            'position',
-            'schedule',
-            'branch',
-            'user'
-        ])
-            ->where('id', $id)
-            ->first();
+        return EmployeeResource::make(
+            Employee::where('id', $id)
+                ->first()
+        );
+    }
+
+    public function account()
+    {
+        return EmployeeResource::make(
+            Employee::where('user_id', auth()->id())
+                ->first()
+        );
     }
 
     /**
@@ -128,25 +162,15 @@ class EmployeeController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function updateJob(Request $request, $id)
+    public function updateJob(UpdateEmployeeJobRequest $request, $id)
     {
-        $request->validate([
-            'branch_id' => 'required|exists:branches,id',
-            'department_id' => 'required|exists:departments,id',
-            'position_id' => 'required|numeric|exists:positions,id',
-            'schedule_id' => 'required|numeric|exists:schedules,id',
-            'hire' => 'required|date'
-        ]);
+        $employee = Employee::where('id', $id)
+            ->update($request->only([
+                'branch_id',  'department_id', 'position_id', 'hire'
+            ]));
 
-        $employee = Employee::find($id);
-
-        if ($employee !== null) {
-            if ($employee->update($request->all())) {
-                return response("Successfully updated!", 200);
-            }
-        }
-
-        return response("Employee does not exist!", 400);
+        return $employee ? response("Successfully updated.")
+            : response("Failed!", 400);
     }
 
     /**
@@ -156,67 +180,23 @@ class EmployeeController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function updateBasic(Request $request, $id)
+    public function updateBasic(UpdateBasicRequest $request, $id)
     {
-        $request->validate([
-            'firstname' => 'required|min:2|string',
-            'middlename' => 'nullable|min:2|string',
-            'lastname' => 'required|min:2|string',
-            'sex' => 'required|string',
-            'marital_status' => 'required|string',
-            'birth' => 'required|date',
-            'address' => 'required|string',
-            'phone_number' => ['required', 'string', 'regex:/^9\d{9}$/', Rule::unique("employees", "phone_number")->ignore($id)]
-        ]);
+        $employee = Employee::where('id', $id)
+            ->update($request->only([
+                'firstname',
+                'middlename',
+                'lastname',
+                'sex',
+                'marital_status',
+                'birth',
+                'address',
+                'phone_number'
+            ]));
 
-        $employee = Employee::find($id);
-
-        if ($employee !== null) {
-            if ($employee->update($request->all())) {
-                return response("Successfully updated!", 200);
-            }
-        }
-
-        return response("Employee does not exist!", 400);
+        return $employee ? response("Successfully updated.")
+            : response("Failed.", 400);
     }
-
-    // /**
-    //  * Update the specified resource in storage.
-    //  *
-    //  * @param  \Illuminate\Http\Request  $request
-    //  * @param  int  $id
-    //  * @return \Illuminate\Http\Response
-    //  */
-    // public function update(Request $request, $id)
-    // {
-    //     // PASSWORD AND PHOTO_DIR is not yet included
-    //     $employee = Employee::find($id);
-    //     $request->validate([
-    //         'firstname' => 'required|string|regex:/[A-Za-z]/',
-    //         'middlename' => 'nullable|string|regex:/[A-Za-z]/',
-    //         'lastname' => 'required|string|regex:/[A-Za-z]/',
-    //         'suffix' => 'nullable|string|regex:/[A-Za-z]/',
-    //         'email' => 'required|email|unique:employees,email,' . $employee->id,
-    //         'phone_number' => 'required|numeric|regex:/^9\d{9}$/',
-    //         'home_address' => 'required',
-    //         'sex' => 'required',
-    //         'job_title' => 'required|string|regex:/[A-Za-z]/',
-    //         'department_id' => 'required',
-    //         'hire_date' => 'required',
-    //         'birth_date' => 'required',
-    //         'photo_dir' => 'nullable|string',
-    //         'active' => 'required'
-    //     ]);
-
-    //     $department = Department::find($request['department_id']);
-
-    //     if ($employee !== null && $department !== null) {
-    //         if ($employee->update($request->all())) {
-    //             return response('Success', 200);
-    //         }
-    //     }
-    //     return response('Invalid', 400);
-    // }
 
     /**
      * Remove the specified resource from storage.

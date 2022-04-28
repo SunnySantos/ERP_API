@@ -2,11 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\UpdateAvatarRequest;
+use App\Http\Requests\UpdateBasicInformationRequest;
+use App\Http\Requests\UpdatePasswordRequest;
+use App\Http\Requests\VerifyAccountRequest;
+use App\Http\Requests\VerifyNameRequest;
+use App\Http\Requests\VerifyPhoneRequest;
+use App\Http\Resources\CustomerResource;
 use App\Models\Customer;
 use App\Models\User;
-use Illuminate\Validation\Rule;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 
@@ -17,11 +22,23 @@ class CustomerController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        return Customer::whereNull('deleted_at')
-            ->orderBy('id', 'DESC')
-            ->paginate(10);
+        $search = $request->search;
+        $customers = Customer::whereNull('deleted_at');
+
+        if ($search !== "null") {
+            $customers->where('id', $search)
+                ->orWhere('firstname', 'like', '%' . $search . '%')
+                ->orWhere('middlename', 'like', '%' . $search . '%')
+                ->orWhere('lastname', 'like', '%' . $search . '%')
+                ->orWhere('address', 'like', '%' . $search . '%');
+        }
+
+        return CustomerResource::collection(
+            $customers->orderBy('id', 'DESC')
+                ->paginate(10)
+        );
     }
 
     public function exportCSV()
@@ -29,7 +46,15 @@ class CustomerController extends Controller
         $filename = 'customers.csv';
         $customers = Customer::all();
 
-        $columns = array_map('current', DB::select('DESCRIBE customers'));
+        $columns = [
+            'id',
+            'firstname',
+            'middlename',
+            'lastname',
+            'address',
+            'phone_number',
+            'email'
+        ];
 
         $file = fopen($filename, 'w');
         fputcsv($file, $columns);
@@ -60,38 +85,20 @@ class CustomerController extends Controller
         unlink($filename);
     }
 
-    public function verifyName(Request $request)
+    public function verifyName(VerifyNameRequest $request)
     {
-        $request->validate([
-            'firstname' => 'required|string|regex:/^[a-zA-ZñÑ\s]+$/',
-            'middlename' => 'nullable|string|regex:/^[a-zA-ZñÑ\s]+$/',
-            'lastname' => 'required|string|regex:/^[a-zA-ZñÑ\s]+$/'
-            // 'address' => 'required|string',
-            // 'phone_number' => 'required|string|unique:customers|regex:/^9\d{9}$/',
-            // 'username' => 'required|min:8|string|unique:users',
-            // 'password' => 'required|min:8|string|confirmed',
-        ]);
-        return response('', 200);
+        return response('');
     }
 
-    public function verifyPhone(Request $request)
+    public function verifyPhone(VerifyPhoneRequest $request)
     {
-        $request->validate([
-            'phone_number' => 'required|string|unique:customers,phone_number|regex:/^9\d{9}$/',
-            'email' => 'required|email|unique:customers,email'
-        ]);
-        return response('', 200);
+        return response('');
     }
 
-    public function verifyAccount(Request $request)
+    public function verifyAccount(VerifyAccountRequest $request)
     {
-        $request->validate([
-            'username' => 'required|min:8|string|unique:users',
-            'password' => 'required|min:8|string|confirmed',
-        ]);
-        return response('', 200);
+        return response('');
     }
-
 
 
     /**
@@ -102,134 +109,85 @@ class CustomerController extends Controller
      */
     public function show($id)
     {
-        return Customer::select(
-            'id',
-            'user_id',
-            'firstname',
-            'middlename',
-            'lastname',
-            'address',
-            'phone_number',
-            'email',
-            'profile'
-        )
-            ->where('deleted_at', null)
-            ->where('user_id', $id)
-            ->get()
-            ->first();
+        return CustomerResource::make(
+            Customer::whereNull('deleted_at')
+                ->find($id)
+        );
     }
 
     public function showBasicInformation($id)
     {
-        return Customer::select(
-            'firstname',
-            'middlename',
-            'lastname',
-            'email',
-            'phone_number',
-            'address',
-            'profile'
-        )
-            ->whereNull('deleted_at')
-            ->where('user_id', $id)
-            ->get()
-            ->first();
+        return CustomerResource::make(
+            Customer::whereNull('deleted_at')
+                ->where('user_id', $id)
+                ->first()
+        );
     }
 
-    public function updateBasicInformation(Request $request, $id)
+    public function updateBasicInformation(UpdateBasicInformationRequest $request, $id)
     {
-        $request->validate([
-            'firstname' => 'required|string|regex:/^[a-zA-Z\s]*$/',
-            'middlename' => 'nullable|string|regex:/^[a-zA-Z\s]*$/',
-            'lastname' => 'required|string|regex:/^[a-zA-Z\s]*$/',
-            'email' => ['required', 'email', Rule::unique("customers", "email")->ignore($id, 'user_id')],
-            'phone_number' => ['required', 'string', 'regex:/^9\d{9}$/', Rule::unique("customers", "phone_number")->ignore($id, 'user_id')],
-            'address' => 'required|string'
-        ]);
-
         $customer = Customer::where('user_id', $id)
-            ->get()
-            ->first();
+            ->update($request->only([
+                'firstname', 'middlename', 'lastname',  'email', 'phone_number', 'address'
+            ]));
 
-        if ($customer !== null) {
-            if ($customer->update($request->all())) {
-                return response('Successfully updated.', 200);
-            }
-        }
+        if ($customer) return response('Successfully updated.');
 
-        return response('Customer does not exist.', 400);
+        return response('Failed', 400);
     }
 
-    public function updatePassword(Request $request, $id)
+    public function updatePassword(UpdatePasswordRequest $request, $id)
     {
-        $request->validate([
-            'old_password' => 'required|string|min:8',
-            'password' => 'required|min:8|string|confirmed'
-        ]);
-
-        $customer = User::where('id', $id)->first();
+        $user = User::where('id', auth()->id())->first();
 
         if ($request->password === $request->old_password) {
             return response(["errors" => ["password" => "Old and new password are same."]], 422);
         }
 
 
-        if ($customer !== null && Hash::check($request->old_password, $customer->password)) {
-            $customer->password = bcrypt($request->password);
-            $customer->save();
-            return response('Successfully updated.', 200);
+        if ($user && Hash::check($request->old_password, $user->password)) {
+            $user->password = bcrypt($request->password);
+            $user->save();
+            return response('Successfully updated.');
         }
         return response(["errors" => ["old_password" => "Wrong old password."]], 422);
     }
 
-    public function updateAvatar(Request $request, $id)
+    public function updateAvatar(UpdateAvatarRequest $request, $id)
     {
-        $request->validate([
-            'profile' => 'required|image|mimes:jpeg,png,jpg|max:2048'
-        ]);
+        $customer = auth()->user()->customer;
+        // Customer::where('user_id', $id)->first();
 
-        $customer = Customer::where('user_id', $id)->first();
 
-        if ($customer !== null) {
+        if ($customer) {
             $profile = $request->file('profile');
-            $extension = $profile->extension();
-            $name = pathinfo($profile->getClientOriginalName(), PATHINFO_FILENAME);
-            $profile_name = time() . '_' . $name . '.' . $extension;
+            $profile_name = pathinfo($profile->hashName(), PATHINFO_FILENAME) . '.' . $profile->extension();
             Storage::disk('public')->putFileAs('customer_img', $profile, $profile_name);
             $customer->profile = $profile_name;
             $customer->save();
-            return response("Successfully updated.", 200);
+            return response("Successfully updated.");
         }
-        return response("Customer does not exist.", 400);
+        return response("Failed.", 400);
     }
 
     public function removeAvatar($id)
     {
-        $customer = Customer::where('user_id', $id)->first();
-        if ($customer !== null) {
-            $customer->profile = 'default.jpg';
-            $customer->save();
-            return response('Successfully updated.', 200);
+        // $customer = Customer::where('user_id', $id)->first();
+        $customer = auth()->user()->customer->update([
+            'profile' => 'default.jpg'
+        ]);
+        if ($customer) {
+            //     $customer->profile = 'default.jpg';
+            //     $customer->save();
+            return response('Successfully updated.');
         }
-        return response('Customer does not exist.', 400);
+        return response('Failed.', 400);
     }
 
     public function count()
     {
-        $count = Customer::select('id')
+        return Customer::select('id')
             ->whereNull('deleted_at')
             ->count();
-        return $count;
-    }
-
-    public function search($key)
-    {
-        return Customer::where('id', $key)
-            ->orWhere('firstname', 'like', '%' . $key . '%')
-            ->orWhere('middlename', 'like', '%' . $key . '%')
-            ->orWhere('lastname', 'like', '%' . $key . '%')
-            ->whereNull('deleted_at')
-            ->orderBy('id', 'DESC')
-            ->paginate(10);
     }
 }

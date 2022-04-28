@@ -25,8 +25,6 @@ class CreateEmployeesTable extends Migration
             $table->foreign('branch_id')->references('id')->on('branches')->onDelete('cascade');
             $table->unsignedBigInteger('position_id');
             $table->foreign('position_id')->references('id')->on('positions')->onDelete('cascade');
-            $table->unsignedBigInteger('schedule_id');
-            $table->foreign('schedule_id')->references('id')->on('schedules')->onDelete('cascade');
             $table->string('firstname');
             $table->string('middlename')->nullable();
             $table->string('lastname');
@@ -52,8 +50,7 @@ class CreateEmployeesTable extends Migration
                     'lastname' => 'Vasquez',
                     'address' => '',
                     'phone_number' => '9123456789',
-                    'position_id' => 1,
-                    'schedule_id' => 1
+                    'position_id' => 1
                 ],
                 [
                     'department_id' => 2,
@@ -64,7 +61,6 @@ class CreateEmployeesTable extends Migration
                     'address' => '',
                     'phone_number' => '9123456788',
                     'position_id' => 2,
-                    'schedule_id' => 1
                 ],
                 [
                     'department_id' => 3,
@@ -75,7 +71,6 @@ class CreateEmployeesTable extends Migration
                     'address' => '',
                     'phone_number' => '9123456787',
                     'position_id' => 3,
-                    'schedule_id' => 1
                 ],
                 [
                     'department_id' => 5,
@@ -86,7 +81,6 @@ class CreateEmployeesTable extends Migration
                     'address' => '',
                     'phone_number' => '9123456786',
                     'position_id' => 3,
-                    'schedule_id' => 1
                 ]
             ]
         );
